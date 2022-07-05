@@ -12,7 +12,8 @@ impl<S: Storage> BackgroundJobServer<S> {
     }
 
     pub fn enqueue(&self, job: String) {
-        let s = self.storage.get("".to_string());
+        println!("Job: {}", job);
+        //let s = self.storage.get("".to_string());
     }
 }
 
