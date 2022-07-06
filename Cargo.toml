@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "fnf-rs",
+    "fnf-derive",
     "example"
 ]

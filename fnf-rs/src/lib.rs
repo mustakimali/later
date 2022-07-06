@@ -1,20 +1,30 @@
 use storage::Storage;
 
-pub struct BackgroundJob;
+pub type HandlerFunc = Box<dyn Fn(String) -> anyhow::Result<()> + Sync + Send>;
 
 pub struct BackgroundJobServer<S: Storage> {
     storage: S,
+    handler_fn: HandlerFunc,
 }
 
 impl<S: Storage> BackgroundJobServer<S> {
-    pub fn start(storage: S) -> Self {
-        Self { storage: storage }
+    pub fn start(storage: S, handler_fn: HandlerFunc) -> Self {
+        Self {
+            storage: storage,
+            handler_fn,
+        }
     }
 
     pub fn enqueue(&self, job: String) {
-        println!("Job: {}", job);
+        let r = (self.handler_fn)(job);
         //let s = self.storage.get("".to_string());
     }
+}
+
+macro_rules! job {
+    ($ex: expr) => {
+        ex
+    };
 }
 
 pub mod storage {
