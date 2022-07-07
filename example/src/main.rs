@@ -1,16 +1,16 @@
+use std::time::SystemTime;
+
 use fnf_rs::{storage::MemoryStorage, BackgroundJobServer};
 
 #[macro_use]
 extern crate rocket;
 use rocket::State;
 
-#[fnf_derive::background_job]
-fn job_print_time() {
-    let epoch = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
-    println!("{}", epoch.as_millis());
-}
+fnf_derive::background_job! {
+    impl None for AppContext {
+        name: AppContext -> String;
+    }
+};
 
 #[get("/")]
 fn hello(state: &State<AppContext>) -> String {
@@ -38,8 +38,8 @@ pub fn handler(input: String) -> anyhow::Result<()> {
 fn rocket() -> _ {
     let ms = fnf_rs::storage::MemoryStorage::new();
     let bjs = BackgroundJobServer::start(ms, Box::new(handler));
+
     let ctx = AppContext { jobs: bjs };
-    let ctx = ctx;
 
     rocket::build().mount("/", routes![hello, next]).manage(ctx)
 }
