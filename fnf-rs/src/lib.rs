@@ -27,9 +27,14 @@ where
         }
     }
 
-    pub fn enqueue(&self, job: String) {
+    pub fn enqueue(&mut self, job: String) {
+        let id = uuid::Uuid::new_v4().to_string();
         let handler = self.handler_fn.clone();
         let ctx = self.ctx.clone();
+
+        self.storage.set(format!("job-{}", id), job);
+        self.storage.push_job_id(id);
+        
         // std::thread::spawn(move || {
         //     let r = (handler)(ctx, job);
         // });
