@@ -1,48 +1,81 @@
+use std::sync::{Arc, Mutex};
+
 use storage::Storage;
 
-pub type HandlerFunc = Box<dyn Fn(String) -> anyhow::Result<()> + Sync + Send>;
+pub type HandlerFunc<C> = Box<dyn Fn(C, String) -> anyhow::Result<()> + Sync + Send>;
 
-pub struct BackgroundJobServer<S: Storage> {
+pub struct BackgroundJobServer<S, C>
+where
+    S: Storage + Send + Sync,
+    C: Send + Sync + Clone,
+{
     storage: S,
-    handler_fn: HandlerFunc,
+    ctx: C,
+    handler_fn: Arc<HandlerFunc<C>>,
 }
 
-impl<S: Storage> BackgroundJobServer<S> {
-    pub fn start(storage: S, handler_fn: HandlerFunc) -> Self {
+impl<S, C> BackgroundJobServer<S, C>
+where
+    S: Storage + Sync + Send,
+    C: Sync + Send + Clone,
+{
+    pub fn start(storage: S, context: C, handler_fn: HandlerFunc<C>) -> Self {
         Self {
             storage: storage,
-            handler_fn,
+            ctx: context,
+            handler_fn: Arc::new(handler_fn),
         }
     }
 
     pub fn enqueue(&self, job: String) {
-        let r = (self.handler_fn)(job);
+        let handler = self.handler_fn.clone();
+        let ctx = self.ctx.clone();
+        // std::thread::spawn(move || {
+        //     let r = (handler)(ctx, job);
+        // });
+
         //let s = self.storage.get("".to_string());
     }
 }
 
-macro_rules! job {
-    ($ex: expr) => {
-        ex
-    };
-}
+fn worker() {}
 
 pub mod storage {
+    use std::collections::{HashMap, HashSet};
+
     pub trait Storage {
-        fn get(&self, key: String) -> String;
+        fn get(&'_ self, key: &str) -> Option<&'_ str>;
+        fn push_job_id(&mut self, id: String);
+        fn set(&mut self, key: String, value: String);
     }
 
-    pub struct MemoryStorage;
+    pub struct MemoryStorage {
+        storage: HashMap<String, String>,
+        jobs: HashSet<String>,
+    }
 
     impl Storage for MemoryStorage {
-        fn get(&self, key: String) -> String {
-            todo!()
+        fn get(&'_ self, key: &str) -> Option<&'_ str> {
+            let r = self.storage.get(key).map(|x| x.as_str());
+
+            r
+        }
+
+        fn set(&mut self, key: String, value: String) {
+            self.storage.insert(key, value);
+        }
+
+        fn push_job_id(&mut self, id: String) {
+            self.jobs.insert(id);
         }
     }
 
     impl MemoryStorage {
         pub fn new() -> Self {
-            Self {}
+            Self {
+                storage: Default::default(),
+                jobs: Default::default(),
+            }
         }
     }
 }

@@ -1,16 +1,20 @@
-use std::time::SystemTime;
-
 use fnf_rs::{storage::MemoryStorage, BackgroundJobServer};
 
 #[macro_use]
 extern crate rocket;
 use rocket::State;
 
-fnf_derive::background_job! {
-    impl None for AppContext {
-        name: AppContext -> String;
-    }
-};
+trait Nonee {
+    fn check(&self) -> ();
+}
+
+struct NoneImpl;
+
+// fnf_derive::background_job! {
+//     impl Nonee for NoneImpl {
+//         name: AppContext -> String;
+//     }
+// }
 
 #[get("/")]
 fn hello(state: &State<AppContext>) -> String {
@@ -24,11 +28,14 @@ fn next(state: &State<AppContext>) -> String {
     "Hello, mo!!".to_string()
 }
 
+#[derive(Clone)]
+pub struct JobContext {}
+
 struct AppContext {
-    jobs: BackgroundJobServer<MemoryStorage>,
+    jobs: BackgroundJobServer<MemoryStorage, JobContext>,
 }
 
-pub fn handler(input: String) -> anyhow::Result<()> {
+pub fn handler(ctx: JobContext, input: String) -> anyhow::Result<()> {
     println!("On Handle: {}", input);
 
     Ok(())
@@ -36,8 +43,9 @@ pub fn handler(input: String) -> anyhow::Result<()> {
 
 #[launch]
 fn rocket() -> _ {
+    let job_ctx = JobContext {};
     let ms = fnf_rs::storage::MemoryStorage::new();
-    let bjs = BackgroundJobServer::start(ms, Box::new(handler));
+    let bjs = BackgroundJobServer::start(ms, job_ctx, Box::new(handler));
 
     let ctx = AppContext { jobs: bjs };
 
