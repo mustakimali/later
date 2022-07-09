@@ -10,3 +10,4 @@ rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }
 fnf-rs = { path = "../fnf-rs/" }
 fnf-derive = { path = "../fnf-derive" }
 anyhow = "1.0.58"
+uuid = { version = "1.1.2", features = ["v4"] }

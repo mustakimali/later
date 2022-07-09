@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.58"
 uuid = { version = "1.1.2", features = ["v4"] }
-
+amiquip = { version = "0.4", default-features = false }
+tokio = "1.19.2"
