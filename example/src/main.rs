@@ -3,11 +3,15 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use fnf_rs::{storage::MemoryStorage, BackgroundJobServer};
+use fnf_rs::{
+    serde::Serialize, storage::MemoryStorage, BackgroundJobServer, HangfireMessage,
+    HangfireMessageO,
+};
 
 #[macro_use]
 extern crate rocket;
 use rocket::State;
+use serde::{de::DeserializeOwned, Deserialize};
 
 #[derive(Clone)]
 pub struct ArcMtx<T> {
@@ -26,23 +30,85 @@ impl<T> ArcMtx<T> {
     }
 }
 
-// fnf_derive::background_job! {
-//     impl None for NoneImpl {
-//         name: AppContext -> String;
-//     }
-// }
-
-#[get("/")]
-fn hello(state: &State<Arc<Mutex<AppContext>>>) -> String {
-    let id = uuid::Uuid::new_v4().to_string();
-    state
-        .lock()
-        .unwrap()
-        .jobs
-        .enqueue(format!("Message: {}", id))
-        .expect("Enqueue Job");
-    "Hello, world!".to_string()
+fnf_derive::background_job! {
+    struct DeriveHandler<JobContext> {
+        sample_message: SampleMessage,
+        another_sample_message: AnotherSampleMessage,
+    }
 }
+
+
+pub fn handler(ctx: ArcMtx<JobContext>, input: String) -> anyhow::Result<()> {
+    println!("On Handle: {}", input);
+
+    Ok(())
+}
+
+struct Handlers {
+    simple_message: Box<dyn Fn(&JobContext, SampleMessage) -> anyhow::Result<()>>,
+    another_simple_message: Box<dyn Fn(&JobContext, AnotherSampleMessage) -> anyhow::Result<()>>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct SampleMessage {
+    txt: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct AnotherSampleMessage {
+    txt: String,
+}
+
+// -- Generated --
+
+impl ::fnf_rs::HangfireMessage for SampleMessage {
+    fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        let result = ::fnf_rs::serde_json::to_vec(&self);
+        let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+        Ok(result?)
+    }
+}
+
+impl ::fnf_rs::HangfireMessage for AnotherSampleMessage {
+    fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        let result = ::fnf_rs::serde_json::to_vec(&self);
+        let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+        Ok(result?)
+    }
+}
+
+impl ::fnf_rs::HangfireMessageO for SampleMessage {
+    fn from_bytes(payload: &[u8]) -> Self {
+        ::fnf_rs::serde_json::from_slice(payload).unwrap()
+    }
+}
+impl ::fnf_rs::HangfireMessageO for AnotherSampleMessage {
+    fn from_bytes(payload: &[u8]) -> Self {
+        ::fnf_rs::serde_json::from_slice(payload).unwrap()
+    }
+}
+
+fn parse(ctx: JobContext, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
+    let handles = Handlers {
+        simple_message: todo!(),
+        another_simple_message: todo!(),
+    };
+
+    //-> Box<dyn ::fnf_rs::HangfireMessage> {
+    match ptype.as_str() {
+        "sample_message" => {
+            let payload = SampleMessage::from_bytes(payload);
+            (handles.simple_message)(&ctx, payload)
+        },
+        "another_sample_message" => {
+            let payload = AnotherSampleMessage::from_bytes(payload);
+            (handles.another_simple_message)(&ctx, payload)
+        }
+        _ => unreachable!(),
+    }
+}
+
+// -- Generated --
 
 #[derive(Clone)]
 pub struct JobContext {}
@@ -51,10 +117,17 @@ struct AppContext {
     jobs: BackgroundJobServer<MemoryStorage, ArcMtx<JobContext>>,
 }
 
-pub fn handler(ctx: ArcMtx<JobContext>, input: String) -> anyhow::Result<()> {
-    println!("On Handle: {}", input);
-
-    Ok(())
+#[get("/")]
+fn hello(state: &State<Arc<Mutex<AppContext>>>) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let msg = SampleMessage { txt: id };
+    state
+        .lock()
+        .unwrap()
+        .jobs
+        .enqueue(msg)
+        .expect("Enqueue Job");
+    "Hello, world!".to_string()
 }
 
 #[launch]

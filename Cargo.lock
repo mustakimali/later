@@ -473,11 +473,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fnf-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+
+[[package]]
 name = "fnf-derive"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn",
 ]
 
@@ -487,6 +497,10 @@ version = "0.1.0"
 dependencies = [
  "amiquip",
  "anyhow",
+ "fnf-core",
+ "serde",
+ "serde_derive",
+ "serde_json",
  "tokio",
  "uuid",
 ]
@@ -691,6 +705,7 @@ dependencies = [
  "fnf-derive",
  "fnf-rs",
  "rocket",
+ "serde",
  "uuid",
 ]
 

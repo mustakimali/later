@@ -4,7 +4,17 @@ use std::{
 };
 
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
+use anyhow::Context;
+use serde::Serialize;
 use storage::Storage;
+
+use crate::models::EnqueuedJob;
+
+mod models;
+pub use fnf_core::*;
+pub use serde_json;
+pub use serde;
+pub use anyhow;
 
 pub type HandlerFunc<C> = Box<dyn Fn(C, String) -> anyhow::Result<()> + Sync + Send>;
 
@@ -38,7 +48,6 @@ where
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
         let routing_key = format!("fnf-rs-{}", id);
-        //exchange.publish(Publish::new("", routing_key))?;
 
         let mut workers = Vec::new();
         for id in 1..5 {
@@ -62,7 +71,10 @@ where
         })
     }
 
-    pub fn enqueue(&mut self, job: String) -> anyhow::Result<()> {
+    pub fn enqueue(
+        &mut self,
+        message: impl HangfireMessage,
+    ) -> anyhow::Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
         let handler = self.handler_fn.clone();
         let ctx = self.ctx.clone();
@@ -70,14 +82,16 @@ where
         // self.storage.set(format!("job-{}", id), job);
         // self.storage.push_job_id(id);
 
-        let exchange = Exchange::direct(&&self.channel);
-        exchange.publish(Publish::new(job.as_bytes(), self.routing_key.clone()))?;
+        let message = models::EnqueuedJob {
+            id,
+            payload: message
+                .to_bytes()
+                .context("Unable to serialize the message to bytes")?,
+        };
+        let message_bytes = serde_json::to_vec(&message)?;
+        let exchange = Exchange::direct(&self.channel);
 
-        // std::thread::spawn(move || {
-        //     let r = (handler)(ctx, job);
-        // });
-
-        //let s = self.storage.get("".to_string());
+        exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
 
         Ok(())
     }
@@ -103,9 +117,21 @@ fn start_worker(worker_id: i32, amqp_address: &str, routing_key: String) -> anyh
     for (i, message) in consumer.receiver().iter().enumerate() {
         match message {
             amiquip::ConsumerMessage::Delivery(delivery) => {
-                let body = String::from_utf8_lossy(&delivery.body);
-                println!("[Worker#{}] ({:>3}) Received [{}]", worker_id, i, body);
-                consumer.ack(delivery)?;
+                match serde_json::from_slice::<EnqueuedJob>(&delivery.body){
+                    Ok(message) => {
+                        // send to app and ack if successful
+                        let id = message.id.clone();
+                        println!("[Worker#{}] ({:>3}) Message received [Id: {}]", worker_id, i, id);
+
+                        consumer.ack(delivery)?;
+                    },
+                    Err(err) => {
+                        println!("[Worker#{}] ({:>3}) Unknown message received [{} bytes]", worker_id, i, delivery.body.len());
+                        consumer.nack(delivery, false)?;
+                    },
+                }
+                
+                
             }
             other => {
                 println!("[Worker#{}] Consumer ended: {:?}", worker_id, other);
