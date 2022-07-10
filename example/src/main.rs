@@ -49,7 +49,7 @@ struct AppContext {
 #[get("/")]
 fn hello(state: &State<Arc<Mutex<AppContext>>>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
-    let msg = SampleMessage { txt: id };
+    let msg = AnotherSampleMessage { txt: id };
     state
         .lock()
         .unwrap()

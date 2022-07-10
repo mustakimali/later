@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-// fnf_derive::background_job! {
-//     struct DeriveHandler<JobContext> {
-//         sample_message: SampleMessage,
-//         another_sample_message: AnotherSampleMessage,
-//     }
-// }
+fnf_derive::background_job! {
+    struct DeriveHandler {
+        sample_message: SampleMessage,
+        another_sample_message: AnotherSampleMessage,
+    }
+}
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct SampleMessage {
@@ -22,7 +22,7 @@ pub struct JobContext {}
 
 
 // -- GENERATED --
-
+/*
 use ::fnf_rs::JobParameter;
 impl ::fnf_rs::JobParameter for SampleMessage {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
@@ -78,3 +78,4 @@ impl<C> ::fnf_rs::BgJobHandler<C> for DeriveHandler<C> {
         }
     }
 }
+ */
