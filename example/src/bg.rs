@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-fnf_derive::background_job! {
+fnf_rs::background_job! {
     struct DeriveHandler {
         sample_message: SampleMessage,
         another_sample_message: AnotherSampleMessage,

@@ -5,8 +5,17 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+all = ["postgres"]
+postgres = ["dep:sqlx"]
+redis = ["dep:redis"]
+
 [dependencies]
+# internal
 fnf-core = { path = "../fnf-core"}
+fnf-derive = { path = "../fnf-derive"}
+
+# external
 anyhow = "1.0.58"
 uuid = { version = "1.1.2", features = ["v4"] }
 amiquip = { version = "0.4", default-features = false }
@@ -14,3 +23,6 @@ tokio = "1.19.2"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
+
+sqlx = { optional = true, version = "0.5", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
+redis = { optional = true, version = "0.21", features = ["tokio-comp"] }

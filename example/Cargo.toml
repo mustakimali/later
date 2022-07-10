@@ -7,8 +7,7 @@ edition = "2021"
 
 [dependencies]
 # internal
-fnf-rs = { path = "../fnf-rs/" }
-fnf-derive = { path = "../fnf-derive" }
+fnf-rs = { path = "../fnf-rs/", features = ["redis"] }
 
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }

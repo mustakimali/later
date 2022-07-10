@@ -1,19 +1,24 @@
-use std::{
-    marker::PhantomData,
-    sync::{Arc},
-    thread::JoinHandle,
-};
-
 use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
+use std::{fmt::Display, marker::PhantomData, sync::Arc, thread::JoinHandle};
 
 pub use anyhow;
-pub use fnf_core::*;
-pub use serde;
+pub use fnf_core::{BgJobHandler, JobParameter};
+pub use fnf_derive::background_job;
 pub use serde_json;
 
 mod models;
+pub mod storage;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct JobId(String);
+impl Display for JobId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 pub struct BackgroundJobServer<C, H>
 where
@@ -32,11 +37,7 @@ where
     C: Sync + Send + Clone + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    pub fn start(
-        id: &str,
-        amqp_address: String,
-        handler: H,
-    ) -> anyhow::Result<Self> {
+    pub fn start(id: &str, amqp_address: String, handler: H) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
         let routing_key = format!("fnf-rs-{}", id);
@@ -64,25 +65,26 @@ where
         })
     }
 
-    pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<()> {
+    pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
         let id = uuid::Uuid::new_v4().to_string();
 
         // self.storage.set(format!("job-{}", id), job);
         // self.storage.push_job_id(id);
 
         let message = models::EnqueuedJob {
-            id,
-            ptype: message.get_ptype(),
+            id: JobId(id.clone()),
+            payload_type: message.get_ptype(),
             payload: message
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
+            parent_id: None,
         };
         let message_bytes = serde_json::to_vec(&message)?;
         let exchange = Exchange::direct(&self.channel);
 
         exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
 
-        Ok(())
+        Ok(JobId(id))
     }
 }
 
@@ -120,7 +122,7 @@ where
                     Ok(message) => {
                         // send to app and ack if successful
                         let id = message.id.clone();
-                        let ptype = message.ptype;
+                        let ptype = message.payload_type;
                         let payload = message.payload;
 
                         println!(
@@ -152,43 +154,4 @@ where
 
     println!("[Worker#{}] Ended", worker_id);
     Ok(())
-}
-pub mod storage {
-    use std::collections::{HashMap, HashSet};
-
-    pub trait Storage {
-        fn get(&'_ self, key: &str) -> Option<&'_ str>;
-        fn push_job_id(&mut self, id: String);
-        fn set(&mut self, key: String, value: String);
-    }
-
-    pub struct MemoryStorage {
-        storage: HashMap<String, String>,
-        jobs: HashSet<String>,
-    }
-
-    impl Storage for MemoryStorage {
-        fn get(&'_ self, key: &str) -> Option<&'_ str> {
-            let r = self.storage.get(key).map(|x| x.as_str());
-
-            r
-        }
-
-        fn set(&mut self, key: String, value: String) {
-            self.storage.insert(key, value);
-        }
-
-        fn push_job_id(&mut self, id: String) {
-            self.jobs.insert(id);
-        }
-    }
-
-    impl MemoryStorage {
-        pub fn new() -> Self {
-            Self {
-                storage: Default::default(),
-                jobs: Default::default(),
-            }
-        }
-    }
 }

@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use fnf_rs::BackgroundJobServer;
+use fnf_rs::{BackgroundJobServer, JobId};
 use rocket::State;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -44,7 +44,7 @@ struct AppContext {
 }
 
 impl AppContext {
-    pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<()> {
+    pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
         self.jobs
             .lock()
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
