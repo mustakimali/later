@@ -55,7 +55,7 @@ impl ToTokens for MatchArm {
         let type_name = &sig.input;
 
         tokens.extend(quote! {
-            "#name" => {
+            stringify!(#name) => {
                 let payload = #type_name::from_bytes(payload);
                 (self.#name)(&ctx, payload)
             },

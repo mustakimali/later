@@ -43,7 +43,7 @@ fn handle_another_sample_message(ctx: &JobContext, payload: AnotherSampleMessage
 }
 
 struct AppContext {
-    jobs: BackgroundJobServer<MemoryStorage, ArcMtx<JobContext>>,
+    jobs: BackgroundJobServer<MemoryStorage, JobContext, DeriveHandler<JobContext>>,
 }
 
 #[get("/")]
@@ -65,14 +65,14 @@ fn rocket() -> _ {
         sample_message: Box::new(handle_sample_message),
         another_sample_message: Box::new(handle_another_sample_message),
     };
-    let job_ctx = ArcMtx::new(JobContext {});
+    let job_ctx = JobContext {};
     let ms = fnf_rs::storage::MemoryStorage::new();
     let bjs = BackgroundJobServer::start(
         "fnf-example",
         "amqp://guest:guest@localhost:5672".into(),
         ms,
         job_ctx,
-        Box::new(handler),
+        handles
     )
     .expect("start bg server");
 

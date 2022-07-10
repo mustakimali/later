@@ -7,7 +7,10 @@ where
 {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn from_bytes(payload: &[u8]) -> Self;
+    fn get_ptype(&self) -> String;
 }
 
 // Marker trait used to decorate handles
-pub trait BgJobHandler {}
+pub trait BgJobHandler<C> {
+    fn dispatch(&self, ctx: C, ptype: String, payload: &[u8]) -> anyhow::Result<()>;
+}

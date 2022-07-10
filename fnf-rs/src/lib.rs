@@ -11,21 +11,21 @@ use storage::Storage;
 use crate::models::EnqueuedJob;
 
 mod models;
-pub use fnf_core::*;
-pub use serde_json;
-pub use serde;
 pub use anyhow;
+pub use fnf_core::*;
+pub use serde;
+pub use serde_json;
 
-pub type HandlerFunc<C> = Box<dyn Fn(C, String) -> anyhow::Result<()> + Sync + Send>;
-
-pub struct BackgroundJobServer<S, C>
+pub struct BackgroundJobServer<S, C, H>
 where
     S: Storage + Send + Sync,
     C: Send + Sync + Clone,
+    H: BgJobHandler<C> + Sync + Send,
 {
     storage: S,
     ctx: C,
-    handler_fn: Arc<HandlerFunc<C>>,
+    handler: Arc<H>,
+    amqp_address: String,
     connection: Connection,
     channel: Channel,
     routing_key: String,
@@ -33,36 +33,41 @@ where
     // exchange: Exchange<'exchange>,
 }
 
-impl<S, C> BackgroundJobServer<S, C>
+impl<S, C, H> BackgroundJobServer<S, C, H>
 where
     S: Storage + Sync + Send,
-    C: Sync + Send + Clone,
+    C: Sync + Send + Clone + 'static,
+    H: BgJobHandler<C> + Sync + Send + 'static,
 {
     pub fn start(
         id: &str,
         amqp_address: String,
         storage: S,
         context: C,
-        handler_fn: HandlerFunc<C>,
+        handler: H,
     ) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
         let routing_key = format!("fnf-rs-{}", id);
 
         let mut workers = Vec::new();
+        let handler = Arc::new(handler);
         for id in 1..5 {
             let amqp_address = amqp_address.clone();
             let routing_key = routing_key.clone();
+            let context = context.clone();
+            let handler = handler.clone();
 
             workers.push(std::thread::spawn(move || {
-                start_worker(id, &amqp_address, routing_key)
+                start_worker(context, handler, id, &amqp_address, &routing_key)
             }));
         }
 
         Ok(Self {
+            amqp_address: amqp_address,
             storage: storage,
             ctx: context,
-            handler_fn: Arc::new(handler_fn),
+            handler,
             // exchange,
             channel,
             connection,
@@ -71,19 +76,15 @@ where
         })
     }
 
-    pub fn enqueue(
-        &mut self,
-        message: impl JobParameter,
-    ) -> anyhow::Result<()> {
+    pub fn enqueue(&mut self, message: impl JobParameter) -> anyhow::Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
-        let handler = self.handler_fn.clone();
-        let ctx = self.ctx.clone();
 
         // self.storage.set(format!("job-{}", id), job);
         // self.storage.push_job_id(id);
 
         let message = models::EnqueuedJob {
             id,
+            ptype: message.get_ptype(),
             payload: message
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
@@ -97,7 +98,17 @@ where
     }
 }
 
-fn start_worker(worker_id: i32, amqp_address: &str, routing_key: String) -> anyhow::Result<()> {
+fn start_worker<C, H>(
+    ctx: C,
+    handler: Arc<H>,
+    worker_id: i32,
+    amqp_address: &str,
+    routing_key: &str,
+) -> anyhow::Result<()>
+where
+    C: Sync + Send + Clone,
+    H: BgJobHandler<C> + Sync + Send,
+{
     println!("[Worker#{}] Starting", worker_id);
     let mut connection = Connection::insecure_open(&amqp_address)?;
     let channel = connection.open_channel(None)?;
@@ -117,21 +128,32 @@ fn start_worker(worker_id: i32, amqp_address: &str, routing_key: String) -> anyh
     for (i, message) in consumer.receiver().iter().enumerate() {
         match message {
             amiquip::ConsumerMessage::Delivery(delivery) => {
-                match serde_json::from_slice::<EnqueuedJob>(&delivery.body){
+                match serde_json::from_slice::<EnqueuedJob>(&delivery.body) {
                     Ok(message) => {
                         // send to app and ack if successful
                         let id = message.id.clone();
-                        println!("[Worker#{}] ({:>3}) Message received [Id: {}]", worker_id, i, id);
+                        let ptype = message.ptype;
+                        let payload = message.payload;
 
-                        consumer.ack(delivery)?;
-                    },
+                        println!(
+                            "[Worker#{}] ({:>3}) Message received [Id: {}]",
+                            worker_id, i, id
+                        );
+
+                        if let Ok(_) = handler.dispatch(ctx.clone(), ptype, &payload) {
+                            consumer.ack(delivery)?;
+                        }
+                    }
                     Err(err) => {
-                        println!("[Worker#{}] ({:>3}) Unknown message received [{} bytes]", worker_id, i, delivery.body.len());
+                        println!(
+                            "[Worker#{}] ({:>3}) Unknown message received [{} bytes]",
+                            worker_id,
+                            i,
+                            delivery.body.len()
+                        );
                         consumer.nack(delivery, false)?;
-                    },
+                    }
                 }
-                
-                
             }
             other => {
                 println!("[Worker#{}] Consumer ended: {:?}", worker_id, other);
@@ -143,7 +165,6 @@ fn start_worker(worker_id: i32, amqp_address: &str, routing_key: String) -> anyh
     println!("[Worker#{}] Ended", worker_id);
     Ok(())
 }
-
 pub mod storage {
     use std::collections::{HashMap, HashSet};
 
