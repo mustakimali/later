@@ -36,7 +36,10 @@ fn handle_sample_message(ctx: &JobContext, payload: SampleMessage) -> anyhow::Re
 
     Ok(())
 }
-fn handle_another_sample_message(ctx: &JobContext, payload: AnotherSampleMessage) -> anyhow::Result<()> {
+fn handle_another_sample_message(
+    ctx: &JobContext,
+    payload: AnotherSampleMessage,
+) -> anyhow::Result<()> {
     println!("On Handle handle_another_sample_message: {:?}", payload);
 
     Ok(())
@@ -61,18 +64,20 @@ fn hello(state: &State<Arc<Mutex<AppContext>>>) -> String {
 
 #[launch]
 fn rocket() -> _ {
-    let handles = DeriveHandler {
-        sample_message: Box::new(handle_sample_message),
-        another_sample_message: Box::new(handle_another_sample_message),
-    };
+    // let handles = DeriveHandler {
+    //     sample_message: Some(Box::new(handle_sample_message)),
+    //     another_sample_message: Some(Box::new(handle_another_sample_message)),
+    // };
     let job_ctx = JobContext {};
+    let handles = DeriveHandlerBuilder::new(job_ctx)
+        .with_sample_message_handler(handle_sample_message)
+        .build();
     let ms = fnf_rs::storage::MemoryStorage::new();
     let bjs = BackgroundJobServer::start(
         "fnf-example",
         "amqp://guest:guest@localhost:5672".into(),
         ms,
-        job_ctx,
-        handles
+        handles,
     )
     .expect("start bg server");
 

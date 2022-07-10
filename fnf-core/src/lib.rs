@@ -12,5 +12,6 @@ where
 
 // Marker trait used to decorate handles
 pub trait BgJobHandler<C> {
+    fn get_ctx(&self) -> &C;
     fn dispatch(&self, ctx: C, ptype: String, payload: &[u8]) -> anyhow::Result<()>;
 }

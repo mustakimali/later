@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use syn::{braced, parse::Parse, parse_macro_input};
 
 #[proc_macro]
@@ -11,9 +11,6 @@ pub fn background_job(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 struct TraitImpl {
     _struct: syn::Token!(struct),
     iden: syn::Ident,
-    // _ang: syn::Token!(<),
-    // ctx: syn::Ident,
-    // _ang_2: syn::Token!(>),
     _brace_token: syn::token::Brace,
     requests: syn::punctuated::Punctuated<Request, syn::Token![,]>,
 }
@@ -24,9 +21,6 @@ impl Parse for TraitImpl {
         Ok(Self {
             _struct: input.parse()?,
             iden: input.parse()?,
-            // _ang: input.parse()?,
-            // ctx: input.parse()?,
-            // _ang_2: input.parse()?,
             _brace_token: braced!(content in input),
             requests: content.parse_terminated(Request::parse)?,
         })
@@ -39,20 +33,61 @@ impl ToTokens for TraitImpl {
         //let ctx = self.ctx.clone();
 
         let impl_message = self.requests.iter().cloned().map(ImplMessage);
-        let fields = self
-            .requests
-            .iter()
-            .cloned()
-            .map(FieldItem);
+        let public_fields = self.requests.iter().cloned().map(|req| FieldItem {
+            req,
+            out_type: OutputType::FieldPub,
+        });
+        let fields_for_builder = self.requests.iter().cloned().map(|req| FieldItem {
+            req,
+            out_type: OutputType::FieldPrivate,
+        });
+        let uninitialized_fields = self.requests.iter().cloned().map(|req| FieldItem {
+            req,
+            out_type: OutputType::UninitializedField,
+        });
+        let builder_methods = self.requests.iter().cloned().map(|req| FieldItem {
+            req,
+            out_type: OutputType::BuilderMethod,
+        });
+        let builder_assignments = self.requests.iter().cloned().map(|req| FieldItem {
+            req,
+            out_type: OutputType::Assignment,
+        });
+
         let match_items = self.requests.iter().cloned().map(MatchArm);
 
+        let builder_type_name = format_ident!("{}Builder", name);
         tokens.extend(quote! {
             use ::fnf_rs::JobParameter;
+
+            impl<C> #builder_type_name<C> {
+                pub fn new(context: C) -> Self {
+                    Self {
+                        ctx: context,
+                        #(#uninitialized_fields)*
+                    }
+                }
+
+                #(#builder_methods)*
+
+                pub fn build(self) -> #name<C> {
+                    #name {
+                        ctx: self.ctx,
+                        #(#builder_assignments)*
+                    }
+                }
+            }
 
             #(#impl_message)*
 
             pub struct #name<C> {
-                #(#fields)*
+                pub ctx: C,
+                #(#public_fields)*
+            }
+
+            pub struct #builder_type_name<C> {
+                ctx: C,
+                #(#fields_for_builder)*
             }
 
             impl<C> ::fnf_rs::BgJobHandler<C> for #name<C> {
@@ -63,6 +98,10 @@ impl ToTokens for TraitImpl {
 
                         _ => unreachable!()
                     }
+                }
+
+                fn get_ctx(&self) -> &C {
+                    &self.ctx
                 }
             }
         })
@@ -96,16 +135,59 @@ impl ToTokens for ImplMessage {
     }
 }
 
-struct FieldItem(Request);
+struct FieldItem {
+    req: Request,
+    out_type: OutputType,
+}
+enum OutputType {
+    FieldPrivate,
+    FieldPub,
+    UninitializedField,
+    BuilderMethod,
+    Assignment,
+}
 impl ToTokens for FieldItem {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let sig = &self.0;
+        let sig = &self.req;
         let name = &sig.name;
+        let builder_method_name = format_ident!("with_{}_handler", name);
         let input = &sig.input;
+        let docs = format!("Register a handler for [`{}`].\nThis handler will be called when a job is enqueued with a payload of this type.", input);
 
-        tokens.extend(quote! {
-            pub #name: Box<dyn Fn(&C, #input) -> anyhow::Result<()> + Send + Sync>,
-        })
+        match self.out_type {
+            OutputType::FieldPrivate => {
+                tokens.extend(quote! {
+                    #name: ::core::option::Option<Box<dyn Fn(&C, #input) -> anyhow::Result<()> + Send + Sync>>,
+                })
+            },
+            OutputType::FieldPub => {
+                tokens.extend(quote! {
+                    pub #name: ::core::option::Option<Box<dyn Fn(&C, #input) -> anyhow::Result<()> + Send + Sync>>,
+                })
+            },
+            OutputType::UninitializedField => {
+                tokens.extend(quote! {
+                    #name: ::core::option::Option::None,
+                })
+            },
+            OutputType::BuilderMethod => {
+                tokens.extend(quote! {
+                    #[doc = #docs]
+                    pub fn #builder_method_name<M>(mut self, handler: M) -> Self
+                    where
+                        M: Fn(&C, #input) -> anyhow::Result<()> + Send + Sync + 'static {
+                        self.#name = Some(Box::new(handler));
+                        self
+                    }
+
+                })
+            },
+            OutputType::Assignment => {
+                tokens.extend(quote! {
+                    #name: self.#name,
+                })
+            },
+        }
     }
 }
 
@@ -119,7 +201,11 @@ impl ToTokens for MatchArm {
         tokens.extend(quote! {
             stringify!(#name) => {
                 let payload = #type_name::from_bytes(payload);
-                (self.#name)(&ctx, payload)
+                if let Some(handler) = &self.#name {
+                    (handler)(&ctx, payload)
+                } else {
+                    unimplemented!("")
+                }
             },
         })
     }

@@ -1,6 +1,6 @@
 use std::{
     sync::{Arc, Mutex},
-    thread::JoinHandle,
+    thread::JoinHandle, marker::PhantomData,
 };
 
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
@@ -23,7 +23,7 @@ where
     H: BgJobHandler<C> + Sync + Send,
 {
     storage: S,
-    ctx: C,
+    ctx: PhantomData<C>,
     handler: Arc<H>,
     amqp_address: String,
     connection: Connection,
@@ -43,7 +43,7 @@ where
         id: &str,
         amqp_address: String,
         storage: S,
-        context: C,
+        //context: C,
         handler: H,
     ) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
@@ -55,7 +55,7 @@ where
         for id in 1..5 {
             let amqp_address = amqp_address.clone();
             let routing_key = routing_key.clone();
-            let context = context.clone();
+            let context = handler.get_ctx().clone();
             let handler = handler.clone();
 
             workers.push(std::thread::spawn(move || {
@@ -66,13 +66,14 @@ where
         Ok(Self {
             amqp_address: amqp_address,
             storage: storage,
-            ctx: context,
+            //ctx: context,
             handler,
             // exchange,
             channel,
             connection,
             routing_key,
             workers,
+            ctx: PhantomData,
         })
     }
 
