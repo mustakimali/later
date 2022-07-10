@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use fnf_rs::{storage::MemoryStorage, BackgroundJobServer};
+use fnf_rs::BackgroundJobServer;
 use rocket::State;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -25,13 +25,13 @@ impl<T> ArcMtx<T> {
     }
 }
 
-fn handle_sample_message(ctx: &JobContext, payload: SampleMessage) -> anyhow::Result<()> {
+fn handle_sample_message(_ctx: &JobContext, payload: SampleMessage) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
 fn handle_another_sample_message(
-    ctx: &JobContext,
+    _ctx: &JobContext,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_another_sample_message: {:?}", payload);
@@ -45,8 +45,10 @@ struct AppContext {
 
 impl AppContext {
     pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<()> {
-        let x = self.jobs.lock().unwrap();
-        x.enqueue(msg)
+        self.jobs
+            .lock()
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?
+            .enqueue(msg)
     }
 }
 
@@ -54,9 +56,7 @@ impl AppContext {
 fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let msg = AnotherSampleMessage { txt: id };
-    state
-        .enqueue(msg)
-        .expect("Enqueue Job");
+    state.enqueue(msg).expect("Enqueue Job");
     "Hello, world!".to_string()
 }
 

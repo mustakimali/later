@@ -1,6 +1,6 @@
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc},
     thread::JoinHandle,
 };
 
@@ -22,7 +22,7 @@ where
     ctx: PhantomData<C>,
     handler: PhantomData<H>,
     channel: Channel,
-    connection: Connection,
+    _connection: Connection,
     routing_key: String,
     _workers: Vec<JoinHandle<anyhow::Result<()>>>,
 }
@@ -58,7 +58,7 @@ where
             ctx: PhantomData,
             handler: PhantomData,
             channel,
-            connection,
+            _connection: connection,
             routing_key,
             _workers: workers,
         })
@@ -132,7 +132,7 @@ where
                             consumer.ack(delivery)?;
                         }
                     }
-                    Err(err) => {
+                    Err(_err) => {
                         println!(
                             "[Worker#{}] ({:>3}) Unknown message received [{} bytes]",
                             worker_id,
