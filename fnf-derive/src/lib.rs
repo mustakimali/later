@@ -42,13 +42,13 @@ impl ToTokens for FieldItem {
         let ctx_name = &self.1;
 
         tokens.extend(quote! {
-            #name: Box<dyn Fn(#ctx_name, #input) -> anyhow::Result<()>>,
+            pub #name: Box<dyn Fn(&#ctx_name, #input) -> anyhow::Result<()>>,
         })
     }
 }
 
-struct MatchItem(Request);
-impl ToTokens for MatchItem {
+struct MatchArm(Request);
+impl ToTokens for MatchArm {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let sig = &self.0;
         let name = &sig.name;
@@ -57,8 +57,30 @@ impl ToTokens for MatchItem {
         tokens.extend(quote! {
             "#name" => {
                 let payload = #type_name::from_bytes(payload);
-                (handlers.#name)(ctx, payload)
+                (self.#name)(&ctx, payload)
             },
+        })
+    }
+}
+
+struct ImplMessage(Request);
+impl ToTokens for ImplMessage {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let sig = &self.0;
+        let type_name = &sig.input;
+
+        tokens.extend(quote! {
+            impl ::fnf_rs::JobParameter for #type_name {
+                fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+                    let result = ::fnf_rs::serde_json::to_vec(&self);
+                    let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+                    Ok(result?)
+                }
+
+                fn from_bytes(payload: &[u8]) -> Self {
+                    ::fnf_rs::serde_json::from_slice(payload).unwrap()
+                }
+            }
         })
     }
 }
@@ -72,19 +94,31 @@ impl ToTokens for TraitImpl {
             .iter()
             .cloned()
             .map(|i| FieldItem(i, ctx.clone()));
-        let match_items = self.requests.iter().cloned().map(MatchItem);
+        let match_items = self.requests.iter().cloned().map(MatchArm);
+        let impl_message = self.requests.iter().cloned().map(ImplMessage);
 
         tokens.extend(quote! {
+            use ::fnf_rs::JobParameter;
+
+            #(#impl_message)*
+
             pub struct #name {
                 #(#fields)*
             }
 
-            pub fn parse_message(handlers: #name, ctx: #ctx, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
-                match ptype.as_str() {
-                    #(#match_items)*
-                    _ => unreachable!()
+            impl ::fnf_rs::BgJobHandler for #name {
+                
+            }
+
+            impl #name {
+                pub fn dispatch(&self, ctx: #ctx, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
+                    match ptype.as_str() {
+                        #(#match_items)*
+                        _ => unreachable!()
+                    }
                 }
             }
+
         })
     }
 }

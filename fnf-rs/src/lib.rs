@@ -73,7 +73,7 @@ where
 
     pub fn enqueue(
         &mut self,
-        message: impl HangfireMessage,
+        message: impl JobParameter,
     ) -> anyhow::Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
         let handler = self.handler_fn.clone();
