@@ -62,17 +62,12 @@ fn hello(state: &State<AppContext>) -> String {
 
 #[launch]
 fn rocket() -> _ {
-    // let handles = DeriveHandler {
-    //     sample_message: Some(Box::new(handle_sample_message)),
-    //     another_sample_message: Some(Box::new(handle_another_sample_message)),
-    // };
     let job_ctx = JobContext {};
     let handles = DeriveHandlerBuilder::new(job_ctx)
         .with_sample_message_handler(handle_sample_message)
         .with_another_sample_message_handler(handle_another_sample_message)
         .build();
 
-    //let ms = fnf_rs::storage::MemoryStorage::new();
     let bjs = BackgroundJobServer::start(
         "fnf-example",
         "amqp://guest:guest@localhost:5672".into(),
