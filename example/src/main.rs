@@ -25,12 +25,6 @@ impl<T> ArcMtx<T> {
     }
 }
 
-pub fn handler(ctx: ArcMtx<JobContext>, input: String) -> anyhow::Result<()> {
-    println!("On Handle: {}", input);
-
-    Ok(())
-}
-
 fn handle_sample_message(ctx: &JobContext, payload: SampleMessage) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
@@ -46,17 +40,21 @@ fn handle_another_sample_message(
 }
 
 struct AppContext {
-    jobs: BackgroundJobServer<MemoryStorage, JobContext, DeriveHandler<JobContext>>,
+    jobs: Arc<Mutex<BackgroundJobServer<JobContext, DeriveHandler<JobContext>>>>,
+}
+
+impl AppContext {
+    pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<()> {
+        let x = self.jobs.lock().unwrap();
+        x.enqueue(msg)
+    }
 }
 
 #[get("/")]
-fn hello(state: &State<Arc<Mutex<AppContext>>>) -> String {
+fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let msg = AnotherSampleMessage { txt: id };
     state
-        .lock()
-        .unwrap()
-        .jobs
         .enqueue(msg)
         .expect("Enqueue Job");
     "Hello, world!".to_string()
@@ -71,17 +69,20 @@ fn rocket() -> _ {
     let job_ctx = JobContext {};
     let handles = DeriveHandlerBuilder::new(job_ctx)
         .with_sample_message_handler(handle_sample_message)
+        .with_another_sample_message_handler(handle_another_sample_message)
         .build();
-    let ms = fnf_rs::storage::MemoryStorage::new();
+
+    //let ms = fnf_rs::storage::MemoryStorage::new();
     let bjs = BackgroundJobServer::start(
         "fnf-example",
         "amqp://guest:guest@localhost:5672".into(),
-        ms,
         handles,
     )
     .expect("start bg server");
 
-    let ctx = Arc::new(Mutex::new(AppContext { jobs: bjs }));
+    let ctx = AppContext {
+        jobs: Arc::new(Mutex::new(bjs)),
+    };
 
     rocket::build().mount("/", routes![hello]).manage(ctx)
 }

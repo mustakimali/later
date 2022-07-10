@@ -60,6 +60,11 @@ impl ToTokens for TraitImpl {
         tokens.extend(quote! {
             use ::fnf_rs::JobParameter;
 
+            pub struct #builder_type_name<C> {
+                ctx: C,
+                #(#fields_for_builder)*
+            }
+
             impl<C> #builder_type_name<C> {
                 pub fn new(context: C) -> Self {
                     Self {
@@ -83,11 +88,6 @@ impl ToTokens for TraitImpl {
             pub struct #name<C> {
                 pub ctx: C,
                 #(#public_fields)*
-            }
-
-            pub struct #builder_type_name<C> {
-                ctx: C,
-                #(#fields_for_builder)*
             }
 
             impl<C> ::fnf_rs::BgJobHandler<C> for #name<C> {

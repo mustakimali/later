@@ -1,49 +1,40 @@
 use std::{
+    marker::PhantomData,
     sync::{Arc, Mutex},
-    thread::JoinHandle, marker::PhantomData,
+    thread::JoinHandle,
 };
 
+use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
-use serde::Serialize;
-use storage::Storage;
 
-use crate::models::EnqueuedJob;
-
-mod models;
 pub use anyhow;
 pub use fnf_core::*;
 pub use serde;
 pub use serde_json;
 
-pub struct BackgroundJobServer<S, C, H>
+mod models;
+
+pub struct BackgroundJobServer<C, H>
 where
-    S: Storage + Send + Sync,
-    C: Send + Sync + Clone,
     H: BgJobHandler<C> + Sync + Send,
 {
-    storage: S,
     ctx: PhantomData<C>,
-    handler: Arc<H>,
-    amqp_address: String,
-    connection: Connection,
+    handler: PhantomData<H>,
     channel: Channel,
+    connection: Connection,
     routing_key: String,
-    workers: Vec<JoinHandle<anyhow::Result<()>>>,
-    // exchange: Exchange<'exchange>,
+    _workers: Vec<JoinHandle<anyhow::Result<()>>>,
 }
 
-impl<S, C, H> BackgroundJobServer<S, C, H>
+impl<C, H> BackgroundJobServer<C, H>
 where
-    S: Storage + Sync + Send,
     C: Sync + Send + Clone + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
     pub fn start(
         id: &str,
         amqp_address: String,
-        storage: S,
-        //context: C,
         handler: H,
     ) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
@@ -64,20 +55,16 @@ where
         }
 
         Ok(Self {
-            amqp_address: amqp_address,
-            storage: storage,
-            //ctx: context,
-            handler,
-            // exchange,
+            ctx: PhantomData,
+            handler: PhantomData,
             channel,
             connection,
             routing_key,
-            workers,
-            ctx: PhantomData,
+            _workers: workers,
         })
     }
 
-    pub fn enqueue(&mut self, message: impl JobParameter) -> anyhow::Result<()> {
+    pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
 
         // self.storage.set(format!("job-{}", id), job);
