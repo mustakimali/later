@@ -25,13 +25,13 @@ impl<T> ArcMtx<T> {
     }
 }
 
-fn handle_sample_message(_ctx: &JobContext, payload: SampleMessage) -> anyhow::Result<()> {
+fn handle_sample_message(_ctx: &bg::DeriveHandlerContext<JobContext>, payload: SampleMessage) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
 fn handle_another_sample_message(
-    _ctx: &JobContext,
+    _ctx: &bg::DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_another_sample_message: {:?}", payload);

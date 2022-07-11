@@ -26,42 +26,32 @@ where
 {
     ctx: PhantomData<C>,
     handler: PhantomData<H>,
-    channel: Channel,
-    _connection: Connection,
-    routing_key: String,
+    // channel: Channel,
+    // _connection: Connection,
+    // routing_key: String,
+    publisher: BackgroundJobServerPublisher,
     _workers: Vec<JoinHandle<anyhow::Result<()>>>,
 }
 
-impl<C, H> BackgroundJobServer<C, H>
-where
-    C: Sync + Send + Clone + 'static,
-    H: BgJobHandler<C> + Sync + Send + 'static,
-{
-    pub fn start(id: &str, amqp_address: String, handler: H) -> anyhow::Result<Self> {
+pub struct BackgroundJobServerPublisher {
+    _amqp_address: String,
+    channel: Channel,
+    routing_key: String,
+    _connection: Connection,
+}
+
+impl BackgroundJobServerPublisher {
+    pub fn new(id: String, amqp_address: String) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
         let routing_key = format!("fnf-rs-{}", id);
 
-        let mut workers = Vec::new();
-        let handler = Arc::new(handler);
-        for id in 1..5 {
-            let amqp_address = amqp_address.clone();
-            let routing_key = routing_key.clone();
-            let context = handler.get_ctx().clone();
-            let handler = handler.clone();
-
-            workers.push(std::thread::spawn(move || {
-                start_worker(context, handler, id, &amqp_address, &routing_key)
-            }));
-        }
-
         Ok(Self {
-            ctx: PhantomData,
-            handler: PhantomData,
-            channel,
+            _amqp_address: amqp_address,
             _connection: connection,
-            routing_key,
-            _workers: workers,
+
+            channel: channel,
+            routing_key: routing_key,
         })
     }
 
@@ -85,6 +75,38 @@ where
         exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
 
         Ok(JobId(id))
+    }
+}
+
+impl<C, H> BackgroundJobServer<C, H>
+where
+    C: Sync + Send + Clone + 'static,
+    H: BgJobHandler<C> + Sync + Send + 'static,
+{
+    pub fn start(handler: H, publisher: BackgroundJobServerPublisher) -> anyhow::Result<Self> {
+        let mut workers = Vec::new();
+        let handler = Arc::new(handler);
+        for id in 1..5 {
+            let amqp_address = publisher._amqp_address.clone();
+            let routing_key = publisher.routing_key.clone();
+            let context = handler.get_ctx().clone();
+            let handler = handler.clone();
+
+            workers.push(std::thread::spawn(move || {
+                start_worker(context, handler, id, &amqp_address, &routing_key)
+            }));
+        }
+
+        Ok(Self {
+            ctx: PhantomData,
+            handler: PhantomData,
+            publisher: publisher,
+            _workers: workers,
+        })
+    }
+
+    pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
+        self.publisher.enqueue(message)
     }
 }
 
@@ -130,7 +152,7 @@ where
                             worker_id, i, id
                         );
 
-                        if let Ok(_) = handler.dispatch(ctx.clone(), ptype, &payload) {
+                        if let Ok(_) = handler.dispatch(ptype, &payload) {
                             consumer.ack(delivery)?;
                         }
                     }
