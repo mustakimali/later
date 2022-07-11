@@ -63,16 +63,26 @@ fn hello(state: &State<AppContext>) -> String {
 #[launch]
 fn rocket() -> _ {
     let job_ctx = JobContext {};
-    let handles = DeriveHandlerBuilder::new(job_ctx)
-        .with_sample_message_handler(handle_sample_message)
-        .with_another_sample_message_handler(handle_another_sample_message)
-        .build();
+    // let handles = DeriveHandlerBuilder::new(job_ctx)
+    //     .with_sample_message_handler(handle_sample_message)
+    //     .with_another_sample_message_handler(handle_another_sample_message)
+    //     .build();
 
-    let bjs = BackgroundJobServer::start(
-        "fnf-example",
+    // let bjs = BackgroundJobServer::start(
+    //     "fnf-example",
+    //     "amqp://guest:guest@localhost:5672".into(),
+    //     handles,
+    // )
+    // .expect("start bg server");
+
+    let bjs = DeriveHandlerBuilder::new(
+        job_ctx,
+        "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
-        handles,
     )
+    .with_sample_message_handler(handle_sample_message)
+    .with_another_sample_message_handler(handle_another_sample_message)
+    .build()
     .expect("start bg server");
 
     let ctx = AppContext {

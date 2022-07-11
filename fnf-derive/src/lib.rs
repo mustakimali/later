@@ -62,24 +62,35 @@ impl ToTokens for TraitImpl {
 
             pub struct #builder_type_name<C> {
                 ctx: C,
+                id: String,
+                amqp_address: String,
+
                 #(#fields_for_builder)*
             }
 
             impl<C> #builder_type_name<C> {
-                pub fn new(context: C) -> Self {
+                pub fn new(context: C, id: String, amqp_address: String) -> Self {
                     Self {
                         ctx: context,
+                        id,
+                        amqp_address,
+                        
                         #(#uninitialized_fields)*
                     }
                 }
 
                 #(#builder_methods)*
 
-                pub fn build(self) -> #name<C> {
-                    #name {
+                pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, #name<C>>>
+                where
+                    C: Sync + Send + Clone + 'static,
+                {
+                    let handler = #name {
                         ctx: self.ctx,
                         #(#builder_assignments)*
-                    }
+                    };
+
+                    BackgroundJobServer::start(&self.id, self.amqp_address, handler)
                 }
             }
 
