@@ -34,6 +34,8 @@ fn handle_another_sample_message(
     _ctx: &bg::DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
+    let s = _ctx.enqueue(AnotherSampleMessage{ txt: "test".to_string() });
+
     println!("On Handle handle_another_sample_message: {:?}", payload);
 
     Ok(())

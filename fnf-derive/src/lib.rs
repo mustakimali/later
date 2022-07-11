@@ -68,8 +68,15 @@ impl ToTokens for TraitImpl {
             use ::fnf_rs::JobParameter;
 
             pub struct #context_name<C> {
-                job: ::std::sync::Arc<::std::sync::Mutex<::fnf_rs::BackgroundJobServerPublisher>>,
-                app: C,
+                pub job: ::std::sync::Arc<::std::sync::Mutex<::fnf_rs::BackgroundJobServerPublisher>>,
+                pub app: C,
+            }
+
+            // ToDo:
+            impl<C> #context_name<C> {
+                pub fn enqueue(&self, message: impl ::fnf_rs::JobParameter) -> anyhow::Result<fnf_rs::JobId> {
+                    self.job.lock()?.enqueue(message)
+                }
             }
 
             pub struct #builder_type_name<C> {
