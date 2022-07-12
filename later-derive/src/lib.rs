@@ -65,15 +65,15 @@ impl ToTokens for TraitImpl {
         let builder_type_name = format_ident!("{}Builder", name);
 
         tokens.extend(quote! {
-            use ::fnf_rs::JobParameter;
+            use ::later::JobParameter;
 
             pub struct #context_name<C> {
-                pub job: ::fnf_rs::BackgroundJobServerPublisher,
+                pub job: ::later::BackgroundJobServerPublisher,
                 pub app: C,
             }
 
             impl<C> #context_name<C> {
-                pub fn enqueue(&self, message: impl ::fnf_rs::JobParameter) -> anyhow::Result<fnf_rs::JobId> {
+                pub fn enqueue(&self, message: impl ::later::JobParameter) -> anyhow::Result<later::JobId> {
                     self.job.enqueue(message)
                 }
             }
@@ -99,11 +99,11 @@ impl ToTokens for TraitImpl {
 
                 #(#builder_methods)*
 
-                pub fn build(self) -> anyhow::Result<fnf_rs::BackgroundJobServer<C, #name<C>>>
+                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
                 where
                     C: Sync + Send + Clone + 'static,
                 {
-                    let publisher = fnf_rs::BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
+                    let publisher = later::BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
                     let ctx = #context_name {
                         job: publisher,
                         app: self.ctx,
@@ -113,7 +113,7 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    let publisher = fnf_rs::BackgroundJobServerPublisher::new(self.id, self.amqp_address)?;
+                    let publisher = later::BackgroundJobServerPublisher::new(self.id, self.amqp_address)?;
                     BackgroundJobServer::start(handler, publisher)
                 }
             }
@@ -125,7 +125,7 @@ impl ToTokens for TraitImpl {
                 #(#public_fields)*
             }
 
-            impl<C> ::fnf_rs::BgJobHandler<C> for #name<C> {
+            impl<C> ::later::BgJobHandler<C> for #name<C> {
                 fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
                     match ptype.as_str() {
 
@@ -151,15 +151,15 @@ impl ToTokens for ImplMessage {
         let ptype = &sig.name;
 
         tokens.extend(quote! {
-            impl ::fnf_rs::JobParameter for #type_name {
+            impl ::later::JobParameter for #type_name {
                 fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-                    let result = ::fnf_rs::serde_json::to_vec(&self);
-                    let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+                    let result = ::later::serde_json::to_vec(&self);
+                    let result = ::later::anyhow::Context::context(result, "unable to serialize");
                     Ok(result?)
                 }
 
                 fn from_bytes(payload: &[u8]) -> Self {
-                    ::fnf_rs::serde_json::from_slice(payload).unwrap()
+                    ::later::serde_json::from_slice(payload).unwrap()
                 }
 
                 fn get_ptype(&self) -> String {

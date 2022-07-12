@@ -1,5 +1,5 @@
 use redis::{Client, Commands, Connection};
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned};
 
 use super::Storage;
 

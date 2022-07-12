@@ -1,5 +1,5 @@
 [package]
-name = "fnf-rs"
+name = "later"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,8 +12,8 @@ redis = ["dep:redis"]
 
 [dependencies]
 # internal
-fnf-core = { path = "../fnf-core"}
-fnf-derive = { path = "../fnf-derive"}
+later-core = { path = "../later-core"}
+later-derive = { path = "../later-derive"}
 
 # external
 anyhow = "1.0.58"

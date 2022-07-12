@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "fnf-rs",
-    "fnf-core",
-    "fnf-derive",
+    "later",
+    "later-core",
+    "later-derive",
     "example"
 ]

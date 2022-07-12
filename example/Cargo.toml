@@ -1,5 +1,5 @@
 [package]
-name = "hangfire-rs"
+name = "example-rocket"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 # internal
-fnf-rs = { path = "../fnf-rs/", features = ["redis"] }
+later = { path = "../later/", features = ["redis"] }
 
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }

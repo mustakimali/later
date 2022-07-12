@@ -556,6 +556,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77f3309417938f28bf8228fcff79a4a37103981e3e186d2ccd19c74b38f4eb71"
 
 [[package]]
+name = "example-rocket"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "later",
+ "rocket",
+ "serde",
+ "uuid 1.1.2",
+]
+
+[[package]]
 name = "fake-simd"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -582,42 +593,6 @@ dependencies = [
  "toml",
  "uncased",
  "version_check 0.9.4",
-]
-
-[[package]]
-name = "fnf-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
-]
-
-[[package]]
-name = "fnf-derive"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "proc-macro2",
- "quote",
- "serde_json",
- "syn",
-]
-
-[[package]]
-name = "fnf-rs"
-version = "0.1.0"
-dependencies = [
- "amiquip",
- "anyhow",
- "fnf-core",
- "fnf-derive",
- "redis",
- "serde",
- "serde_derive",
- "serde_json",
- "sqlx",
- "tokio",
- "uuid 1.1.2",
 ]
 
 [[package]]
@@ -821,17 +796,6 @@ dependencies = [
  "serde",
  "serde_json",
  "walkdir",
-]
-
-[[package]]
-name = "hangfire-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fnf-rs",
- "rocket",
- "serde",
- "uuid 1.1.2",
 ]
 
 [[package]]
@@ -1062,6 +1026,42 @@ checksum = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "later"
+version = "0.1.0"
+dependencies = [
+ "amiquip",
+ "anyhow",
+ "later-core",
+ "later-derive",
+ "redis",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid 1.1.2",
+]
+
+[[package]]
+name = "later-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+]
+
+[[package]]
+name = "later-derive"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
 ]
 
 [[package]]

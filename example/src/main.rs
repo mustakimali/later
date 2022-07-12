@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use fnf_rs::{BackgroundJobServer, JobId};
+use later::{BackgroundJobServer, JobId, JobParameter};
 use rocket::State;
 
 mod bg;
@@ -35,7 +35,7 @@ struct AppContext {
 }
 
 impl AppContext {
-    pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
+    pub fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
         self.jobs.enqueue(msg)
     }
 }

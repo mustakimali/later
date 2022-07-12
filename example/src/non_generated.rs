@@ -1,12 +1,12 @@
 use super::bg::not_generated::*;
-use fnf_rs::{BackgroundJobServer, JobId};
+use later::{BackgroundJobServer, JobId, JobParameter};
 
 struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
 impl AppContext {
-    pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
+    pub fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
         self.jobs
             //.lock()
             //.map_err(|e| anyhow::anyhow!(e.to_string()))?

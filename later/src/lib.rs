@@ -10,8 +10,8 @@ use std::{
 };
 
 pub use anyhow;
-pub use fnf_core::{BgJobHandler, JobParameter};
-pub use fnf_derive::background_job;
+pub use later_core::{BgJobHandler, JobParameter};
+pub use later_derive::background_job;
 pub use serde_json;
 
 mod models;
@@ -31,9 +31,6 @@ where
 {
     ctx: PhantomData<C>,
     handler: PhantomData<H>,
-    // channel: Channel,
-    // _connection: Connection,
-    // routing_key: String,
     publisher: BackgroundJobServerPublisher,
     _workers: Vec<JoinHandle<anyhow::Result<()>>>,
 }

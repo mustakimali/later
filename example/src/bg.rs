@@ -1,7 +1,7 @@
-use fnf_rs::BackgroundJobServer;
+use later::BackgroundJobServer;
 use serde::{Deserialize, Serialize};
 
-fnf_rs::background_job! {
+later::background_job! {
     struct DeriveHandler {
         sample_message: SampleMessage,
         another_sample_message: AnotherSampleMessage,
@@ -23,7 +23,7 @@ pub struct JobContext {}
 
 #[allow(dead_code)]
 pub mod not_generated {
-    use fnf_rs::{BackgroundJobServer, BackgroundJobServerPublisher};
+    use later::{BackgroundJobServer, BackgroundJobServerPublisher};
     use serde::{Deserialize, Serialize};
 
     fn main() {
@@ -71,18 +71,18 @@ pub mod not_generated {
 
     /* GENERATED */
 
-    use ::fnf_rs::JobParameter;
+    use ::later::JobParameter;
 
     pub struct DeriveHandlerContext<C> {
-        job: ::fnf_rs::BackgroundJobServerPublisher,
+        job: ::later::BackgroundJobServerPublisher,
         app: C,
     }
 
     impl<C> DeriveHandlerContext<C> {
         pub fn enqueue(
             &self,
-            message: impl ::fnf_rs::JobParameter,
-        ) -> anyhow::Result<fnf_rs::JobId> {
+            message: impl ::later::JobParameter,
+        ) -> anyhow::Result<later::JobId> {
             self.job.enqueue(message)
         }
     }
@@ -170,27 +170,27 @@ pub mod not_generated {
             BackgroundJobServer::start(handler, publisher)
         }
     }
-    impl ::fnf_rs::JobParameter for SampleMessage {
+    impl ::later::JobParameter for SampleMessage {
         fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-            let result = ::fnf_rs::serde_json::to_vec(&self);
-            let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+            let result = ::later::serde_json::to_vec(&self);
+            let result = ::later::anyhow::Context::context(result, "unable to serialize");
             Ok(result?)
         }
         fn from_bytes(payload: &[u8]) -> Self {
-            ::fnf_rs::serde_json::from_slice(payload).unwrap()
+            ::later::serde_json::from_slice(payload).unwrap()
         }
         fn get_ptype(&self) -> String {
             "sample_message".into()
         }
     }
-    impl ::fnf_rs::JobParameter for AnotherSampleMessage {
+    impl ::later::JobParameter for AnotherSampleMessage {
         fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-            let result = ::fnf_rs::serde_json::to_vec(&self);
-            let result = ::fnf_rs::anyhow::Context::context(result, "unable to serialize");
+            let result = ::later::serde_json::to_vec(&self);
+            let result = ::later::anyhow::Context::context(result, "unable to serialize");
             Ok(result?)
         }
         fn from_bytes(payload: &[u8]) -> Self {
-            ::fnf_rs::serde_json::from_slice(payload).unwrap()
+            ::later::serde_json::from_slice(payload).unwrap()
         }
         fn get_ptype(&self) -> String {
             "another_sample_message".into()
@@ -214,7 +214,7 @@ pub mod not_generated {
             >,
         >,
     }
-    impl<C> ::fnf_rs::BgJobHandler<C> for DeriveHandler<C>
+    impl<C> ::later::BgJobHandler<C> for DeriveHandler<C>
     where
         C: Sync + Send + 'static,
     {
