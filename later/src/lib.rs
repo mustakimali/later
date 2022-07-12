@@ -59,7 +59,15 @@ impl BackgroundJobServerPublisher {
         })
     }
 
+    pub fn enqueue_continue(&self, parent_job_id: JobId, message: impl JobParameter) -> anyhow::Result<JobId> {
+        self.enqueue_internal(Some(parent_job_id), message)
+    }
+
     pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
+        self.enqueue_internal(None, message)
+    }
+
+    fn enqueue_internal(&self, parent_job_id: Option<JobId>, message: impl JobParameter) -> anyhow::Result<JobId> {
         let id = uuid::Uuid::new_v4().to_string();
 
         // self.storage.set(format!("job-{}", id), job);
@@ -71,9 +79,20 @@ impl BackgroundJobServerPublisher {
             payload: message
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
-            parent_id: None,
+            parent_id: parent_job_id.clone(),
         };
         let message_bytes = serde_json::to_vec(&message)?;
+
+        // save the job
+
+        if let Some(_parent_job_id) = parent_job_id {
+            // continuation
+            // - enqueue if parent is already complete
+            // - schedule self message to check an enqueue later (to prevent race)
+
+        }
+
+
         let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
         let exchange = Exchange::direct(&channel);
 
