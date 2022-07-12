@@ -1,12 +1,12 @@
 use fnf_rs::BackgroundJobServer;
 use serde::{Deserialize, Serialize};
 
-fnf_rs::background_job! {
-    struct DeriveHandler {
-        sample_message: SampleMessage,
-        another_sample_message: AnotherSampleMessage,
-    }
-}
+// fnf_rs::background_job! {
+//     struct DeriveHandler {
+//         sample_message: SampleMessage,
+//         another_sample_message: AnotherSampleMessage,
+//     }
+// }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct SampleMessage {
@@ -71,8 +71,14 @@ pub mod not_generated {
     use ::fnf_rs::JobParameter;
 
     pub struct DeriveHandlerContext<C> {
-        job: ::std::sync::Arc<::std::sync::Mutex<::fnf_rs::BackgroundJobServerPublisher>>,
+        job: ::fnf_rs::BackgroundJobServerPublisher,
         app: C,
+    }
+
+    impl<C> DeriveHandlerContext<C> {
+        pub fn enqueue(&self, message: impl ::fnf_rs::JobParameter) -> anyhow::Result<fnf_rs::JobId> {
+            self.job.enqueue(message)
+        }
     }
 
     pub struct DeriveHandlerBuilder<C>
@@ -144,7 +150,7 @@ pub mod not_generated {
         {
             let publisher = BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
             let ctx = DeriveHandlerContext {
-                job: ::std::sync::Arc::new(::std::sync::Mutex::new(publisher)),
+                job: publisher,
                 app: self.ctx,
             };
             let handler = DeriveHandler {

@@ -2,7 +2,12 @@ use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, marker::PhantomData, sync::Arc, thread::JoinHandle};
+use std::{
+    fmt::Display,
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+    thread::JoinHandle,
+};
 
 pub use anyhow;
 pub use fnf_core::{BgJobHandler, JobParameter};
@@ -35,7 +40,7 @@ where
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
-    channel: Channel,
+    channel: Mutex<Channel>,
     routing_key: String,
     _connection: Connection,
 }
@@ -50,7 +55,7 @@ impl BackgroundJobServerPublisher {
             _amqp_address: amqp_address,
             _connection: connection,
 
-            channel: channel,
+            channel: Mutex::new(channel),
             routing_key: routing_key,
         })
     }
@@ -70,7 +75,8 @@ impl BackgroundJobServerPublisher {
             parent_id: None,
         };
         let message_bytes = serde_json::to_vec(&message)?;
-        let exchange = Exchange::direct(&self.channel);
+        let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+        let exchange = Exchange::direct(&channel);
 
         exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
 

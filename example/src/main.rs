@@ -25,16 +25,16 @@ impl<T> ArcMtx<T> {
     }
 }
 
-fn handle_sample_message(_ctx: &bg::DeriveHandlerContext<JobContext>, payload: SampleMessage) -> anyhow::Result<()> {
+fn handle_sample_message(_ctx: &bg::not_generated::DeriveHandlerContext<JobContext>, payload: bg::not_generated::SampleMessage) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
 fn handle_another_sample_message(
-    _ctx: &bg::DeriveHandlerContext<JobContext>,
-    payload: AnotherSampleMessage,
+    _ctx: &bg::not_generated::DeriveHandlerContext<JobContext>,
+    payload: bg::not_generated::AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let s = _ctx.enqueue(AnotherSampleMessage{ txt: "test".to_string() });
+    let s = _ctx.enqueue(bg::not_generated::AnotherSampleMessage{ txt: "test".to_string() });
 
     println!("On Handle handle_another_sample_message: {:?}", payload);
 
@@ -42,7 +42,7 @@ fn handle_another_sample_message(
 }
 
 struct AppContext {
-    jobs: Arc<Mutex<BackgroundJobServer<JobContext, DeriveHandler<JobContext>>>>,
+    jobs: Arc<Mutex<BackgroundJobServer<JobContext, bg::not_generated::DeriveHandler<JobContext>>>>,
 }
 
 impl AppContext {
@@ -57,7 +57,7 @@ impl AppContext {
 #[get("/")]
 fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
-    let msg = AnotherSampleMessage { txt: id };
+    let msg = bg::not_generated::AnotherSampleMessage { txt: id };
     state.enqueue(msg).expect("Enqueue Job");
     "Hello, world!".to_string()
 }
@@ -77,7 +77,7 @@ fn rocket() -> _ {
     // )
     // .expect("start bg server");
 
-    let bjs = DeriveHandlerBuilder::new(
+    let bjs = bg::not_generated::DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
