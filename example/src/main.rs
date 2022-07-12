@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use later::{BackgroundJobServer, JobId, core::JobParameter};
+use later::BackgroundJobServer;
 use rocket::State;
 
 mod bg;
@@ -34,17 +34,11 @@ struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
-impl AppContext {
-    pub fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        self.jobs.enqueue(msg)
-    }
-}
-
 #[get("/")]
 fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let msg = AnotherSampleMessage { txt: id };
-    state.enqueue(msg).expect("Enqueue Job");
+    state.jobs.enqueue(msg).expect("Enqueue Job");
     "Hello, world!".to_string()
 }
 

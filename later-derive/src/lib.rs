@@ -70,9 +70,11 @@ impl ToTokens for TraitImpl {
                 pub app: C,
             }
 
-            impl<C> #context_name<C> {
-                pub fn enqueue(&self, message: impl ::later::core::JobParameter) -> anyhow::Result<later::JobId> {
-                    self.job.enqueue(message)
+            impl<C> std::ops::Deref for #context_name<C> {
+                type Target = ::later::BackgroundJobServerPublisher;
+        
+                fn deref(&self) -> &Self::Target {
+                    &self.job
                 }
             }
 

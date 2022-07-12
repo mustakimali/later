@@ -48,7 +48,7 @@ impl BackgroundJobServerPublisher {
     pub fn new(id: String, amqp_address: String) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
-        let routing_key = format!("fnf-rs-{}", id);
+        let routing_key = format!("later-{}", id);
 
         Ok(Self {
             _amqp_address: amqp_address,

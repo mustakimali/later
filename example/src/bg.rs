@@ -40,10 +40,12 @@ pub mod not_generated {
     }
 
     fn handle_sample_message(
-        _ctx: &DeriveHandlerContext<JobContext>,
+        ctx: &DeriveHandlerContext<JobContext>,
         payload: SampleMessage,
     ) -> anyhow::Result<()> {
         println!("On Handle handle_sample_message: {:?}", payload);
+
+        ctx.enqueue(AnotherSampleMessage{txt: "".into()})?;
 
         Ok(())
     }
@@ -78,12 +80,11 @@ pub mod not_generated {
         app: C,
     }
 
-    impl<C> DeriveHandlerContext<C> {
-        pub fn enqueue(
-            &self,
-            message: impl ::later::core::JobParameter,
-        ) -> anyhow::Result<later::JobId> {
-            self.job.enqueue(message)
+    impl<C> std::ops::Deref for DeriveHandlerContext<C> {
+        type Target = ::later::BackgroundJobServerPublisher;
+
+        fn deref(&self) -> &Self::Target {
+            &self.job
         }
     }
 
