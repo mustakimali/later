@@ -1,8 +1,9 @@
 [package]
 name = "later"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "Background jobs manager and runner for Rust"
+license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,7 +14,7 @@ redis = ["dep:redis"]
 
 [dependencies]
 # internal
-later-derive = { path = "../later-derive"}
+later-derive = { path = "../later-derive", version = "0.0.1"}
 
 # external
 anyhow = "1.0.58"

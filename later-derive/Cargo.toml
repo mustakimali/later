@@ -3,6 +3,7 @@ name = "later-derive"
 version = "0.0.1"
 edition = "2021"
 description = "Macro to generate stub for later: Background jobs manager and runner for Rust"
+license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

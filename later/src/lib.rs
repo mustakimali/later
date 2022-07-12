@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 use crate::core::{BgJobHandler, JobParameter};
 use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
