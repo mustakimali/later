@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "later",
-    "later-core",
     "later-derive",
     "example"
 ]

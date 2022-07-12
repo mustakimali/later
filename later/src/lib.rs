@@ -1,3 +1,4 @@
+use crate::core::{BgJobHandler, JobParameter};
 use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
@@ -10,10 +11,10 @@ use std::{
 };
 
 pub use anyhow;
-pub use later_core::{BgJobHandler, JobParameter};
 pub use later_derive::background_job;
 pub use serde_json;
 
+pub mod core;
 mod models;
 pub mod storage;
 
@@ -92,11 +93,10 @@ where
         for id in 1..5 {
             let amqp_address = publisher._amqp_address.clone();
             let routing_key = publisher.routing_key.clone();
-            let context = handler.get_ctx().clone();
             let handler = handler.clone();
 
             workers.push(std::thread::spawn(move || {
-                start_worker(context, handler, id, &amqp_address, &routing_key)
+                start_worker(handler, id, &amqp_address, &routing_key)
             }));
         }
 
@@ -114,7 +114,6 @@ where
 }
 
 fn start_worker<C, H>(
-    ctx: C,
     handler: Arc<H>,
     worker_id: i32,
     amqp_address: &str,
@@ -122,7 +121,7 @@ fn start_worker<C, H>(
 ) -> anyhow::Result<()>
 where
     C: Sync + Send + Clone,
-    H: BgJobHandler<C> + Sync + Send,
+    H: core::BgJobHandler<C> + Sync + Send,
 {
     println!("[Worker#{}] Starting", worker_id);
     let mut connection = Connection::insecure_open(&amqp_address)?;

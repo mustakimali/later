@@ -65,15 +65,13 @@ impl ToTokens for TraitImpl {
         let builder_type_name = format_ident!("{}Builder", name);
 
         tokens.extend(quote! {
-            use ::later::JobParameter;
-
             pub struct #context_name<C> {
                 pub job: ::later::BackgroundJobServerPublisher,
                 pub app: C,
             }
 
             impl<C> #context_name<C> {
-                pub fn enqueue(&self, message: impl ::later::JobParameter) -> anyhow::Result<later::JobId> {
+                pub fn enqueue(&self, message: impl ::later::core::JobParameter) -> anyhow::Result<later::JobId> {
                     self.job.enqueue(message)
                 }
             }
@@ -125,7 +123,7 @@ impl ToTokens for TraitImpl {
                 #(#public_fields)*
             }
 
-            impl<C> ::later::BgJobHandler<C> for #name<C> {
+            impl<C> ::later::core::BgJobHandler<C> for #name<C> {
                 fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
                     match ptype.as_str() {
 
@@ -151,7 +149,7 @@ impl ToTokens for ImplMessage {
         let ptype = &sig.name;
 
         tokens.extend(quote! {
-            impl ::later::JobParameter for #type_name {
+            impl ::later::core::JobParameter for #type_name {
                 fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
                     let result = ::later::serde_json::to_vec(&self);
                     let result = ::later::anyhow::Context::context(result, "unable to serialize");
@@ -247,6 +245,8 @@ impl ToTokens for MatchArm {
 
         tokens.extend(quote! {
             stringify!(#name) => {
+                use ::later::core::JobParameter;
+                
                 let payload = #type_name::from_bytes(payload);
                 if let Some(handler) = &self.#name {
                     (handler)(&self.ctx, payload)

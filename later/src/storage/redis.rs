@@ -12,7 +12,7 @@ pub struct Redis {
 #[derive(Clone)]
 struct ScanRange {
     key: String,
-    count: i32,
+    _count: i32,
     index: i32,
 }
 
@@ -80,7 +80,7 @@ impl Storage for Redis {
 
         self.scan = Some(ScanRange {
             key: key.to_string(),
-            count: item_in_range,
+            _count: item_in_range,
             index: 0,
         });
 

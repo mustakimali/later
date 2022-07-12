@@ -8,12 +8,12 @@ later::background_job! {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SampleMessage {
     pub txt: String,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AnotherSampleMessage {
     pub txt: String,
 }
@@ -71,7 +71,7 @@ pub mod not_generated {
 
     /* GENERATED */
 
-    use ::later::JobParameter;
+    use ::later::core::JobParameter;
 
     pub struct DeriveHandlerContext<C> {
         job: ::later::BackgroundJobServerPublisher,
@@ -81,7 +81,7 @@ pub mod not_generated {
     impl<C> DeriveHandlerContext<C> {
         pub fn enqueue(
             &self,
-            message: impl ::later::JobParameter,
+            message: impl ::later::core::JobParameter,
         ) -> anyhow::Result<later::JobId> {
             self.job.enqueue(message)
         }
@@ -170,7 +170,7 @@ pub mod not_generated {
             BackgroundJobServer::start(handler, publisher)
         }
     }
-    impl ::later::JobParameter for SampleMessage {
+    impl ::later::core::JobParameter for SampleMessage {
         fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
             let result = ::later::serde_json::to_vec(&self);
             let result = ::later::anyhow::Context::context(result, "unable to serialize");
@@ -183,7 +183,7 @@ pub mod not_generated {
             "sample_message".into()
         }
     }
-    impl ::later::JobParameter for AnotherSampleMessage {
+    impl ::later::core::JobParameter for AnotherSampleMessage {
         fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
             let result = ::later::serde_json::to_vec(&self);
             let result = ::later::anyhow::Context::context(result, "unable to serialize");
@@ -214,7 +214,7 @@ pub mod not_generated {
             >,
         >,
     }
-    impl<C> ::later::BgJobHandler<C> for DeriveHandler<C>
+    impl<C> ::later::core::BgJobHandler<C> for DeriveHandler<C>
     where
         C: Sync + Send + 'static,
     {

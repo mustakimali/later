@@ -1,5 +1,5 @@
 use super::bg::not_generated::*;
-use later::{BackgroundJobServer, JobId, JobParameter};
+use later::{BackgroundJobServer, JobId, core::JobParameter};
 
 struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,

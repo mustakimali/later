@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use later::{BackgroundJobServer, JobId, JobParameter};
+use later::{BackgroundJobServer, JobId, core::JobParameter};
 use rocket::State;
 
 mod bg;

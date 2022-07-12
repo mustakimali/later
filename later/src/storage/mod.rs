@@ -15,8 +15,8 @@ pub trait Storage {
 }
 
 pub struct MemoryStorage {
-    storage: HashMap<String, String>,
-    jobs: HashSet<String>,
+    _storage: HashMap<String, String>,
+    _jobs: HashSet<String>,
 }
 
 // impl Storage for MemoryStorage {
@@ -34,8 +34,8 @@ pub struct MemoryStorage {
 impl MemoryStorage {
     pub fn new() -> Self {
         Self {
-            storage: Default::default(),
-            jobs: Default::default(),
+            _storage: Default::default(),
+            _jobs: Default::default(),
         }
     }
 }

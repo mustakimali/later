@@ -1030,11 +1030,10 @@ dependencies = [
 
 [[package]]
 name = "later"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "amiquip",
  "anyhow",
- "later-core",
  "later-derive",
  "redis",
  "serde",
@@ -1046,16 +1045,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "later-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
-]
-
-[[package]]
 name = "later-derive"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "proc-macro2",
