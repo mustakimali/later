@@ -1,12 +1,12 @@
 use fnf_rs::BackgroundJobServer;
 use serde::{Deserialize, Serialize};
 
-// fnf_rs::background_job! {
-//     struct DeriveHandler {
-//         sample_message: SampleMessage,
-//         another_sample_message: AnotherSampleMessage,
-//     }
-// }
+fnf_rs::background_job! {
+    struct DeriveHandler {
+        sample_message: SampleMessage,
+        another_sample_message: AnotherSampleMessage,
+    }
+}
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct SampleMessage {
@@ -39,7 +39,10 @@ pub mod not_generated {
         .expect("start bg server");
     }
 
-    fn handle_sample_message(_ctx: &DeriveHandlerContext<JobContext>, payload: SampleMessage) -> anyhow::Result<()> {
+    fn handle_sample_message(
+        _ctx: &DeriveHandlerContext<JobContext>,
+        payload: SampleMessage,
+    ) -> anyhow::Result<()> {
         println!("On Handle handle_sample_message: {:?}", payload);
 
         Ok(())
@@ -76,7 +79,10 @@ pub mod not_generated {
     }
 
     impl<C> DeriveHandlerContext<C> {
-        pub fn enqueue(&self, message: impl ::fnf_rs::JobParameter) -> anyhow::Result<fnf_rs::JobId> {
+        pub fn enqueue(
+            &self,
+            message: impl ::fnf_rs::JobParameter,
+        ) -> anyhow::Result<fnf_rs::JobId> {
             self.job.enqueue(message)
         }
     }
@@ -148,7 +154,8 @@ pub mod not_generated {
         where
             C: Sync + Send + Clone + 'static,
         {
-            let publisher = BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
+            let publisher =
+                BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
             let ctx = DeriveHandlerContext {
                 job: publisher,
                 app: self.ctx,

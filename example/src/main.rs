@@ -4,60 +4,46 @@ extern crate rocket;
 use bg::*;
 use fnf_rs::{BackgroundJobServer, JobId};
 use rocket::State;
-use std::sync::{Arc, Mutex, MutexGuard};
 
 mod bg;
+#[allow(dead_code)]
+mod non_generated;
 
-#[derive(Clone)]
-pub struct ArcMtx<T> {
-    inner: Arc<Mutex<T>>,
-}
-
-impl<T> ArcMtx<T> {
-    pub fn new(item: T) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(item)),
-        }
-    }
-
-    pub fn get(&self) -> MutexGuard<'_, T> {
-        self.inner.lock().unwrap()
-    }
-}
-
-fn handle_sample_message(_ctx: &bg::not_generated::DeriveHandlerContext<JobContext>, payload: bg::not_generated::SampleMessage) -> anyhow::Result<()> {
+fn handle_sample_message(
+    _ctx: &DeriveHandlerContext<JobContext>,
+    payload: SampleMessage,
+) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
 fn handle_another_sample_message(
-    _ctx: &bg::not_generated::DeriveHandlerContext<JobContext>,
-    payload: bg::not_generated::AnotherSampleMessage,
+    _ctx: &DeriveHandlerContext<JobContext>,
+    payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let s = _ctx.enqueue(bg::not_generated::AnotherSampleMessage{ txt: "test".to_string() });
+    let id = _ctx.enqueue(SampleMessage {
+        txt: "test".to_string(),
+    })?;
 
-    println!("On Handle handle_another_sample_message: {:?}", payload);
+    println!("On Handle handle_another_sample_message: {:?}, enqueued: {}", payload, id);
 
     Ok(())
 }
 
 struct AppContext {
-    jobs: Arc<Mutex<BackgroundJobServer<JobContext, bg::not_generated::DeriveHandler<JobContext>>>>,
+    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
 impl AppContext {
     pub fn enqueue<T: fnf_rs::JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        self.jobs
-            .lock()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?
-            .enqueue(msg)
+        self.jobs.enqueue(msg)
     }
 }
 
 #[get("/")]
 fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
-    let msg = bg::not_generated::AnotherSampleMessage { txt: id };
+    let msg = AnotherSampleMessage { txt: id };
     state.enqueue(msg).expect("Enqueue Job");
     "Hello, world!".to_string()
 }
@@ -65,19 +51,7 @@ fn hello(state: &State<AppContext>) -> String {
 #[launch]
 fn rocket() -> _ {
     let job_ctx = JobContext {};
-    // let handles = DeriveHandlerBuilder::new(job_ctx)
-    //     .with_sample_message_handler(handle_sample_message)
-    //     .with_another_sample_message_handler(handle_another_sample_message)
-    //     .build();
-
-    // let bjs = BackgroundJobServer::start(
-    //     "fnf-example",
-    //     "amqp://guest:guest@localhost:5672".into(),
-    //     handles,
-    // )
-    // .expect("start bg server");
-
-    let bjs = bg::not_generated::DeriveHandlerBuilder::new(
+    let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
@@ -87,9 +61,10 @@ fn rocket() -> _ {
     .build()
     .expect("start bg server");
 
-    let ctx = AppContext {
-        jobs: Arc::new(Mutex::new(bjs)),
-    };
+    let ctx = AppContext { jobs: bjs };
+
+    #[cfg(debug_assertions)]
+    non_generated::test_non_generated();
 
     rocket::build().mount("/", routes![hello]).manage(ctx)
 }
