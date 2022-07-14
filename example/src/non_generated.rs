@@ -170,12 +170,12 @@ where
 }
 impl ::later::core::JobParameter for SampleMessage {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        let result = ::later::serde_json::to_vec(&self);
+        let result = ::later::encoder::encode(&self);
         let result = ::later::anyhow::Context::context(result, "unable to serialize");
         Ok(result?)
     }
     fn from_bytes(payload: &[u8]) -> Self {
-        ::later::serde_json::from_slice(payload).unwrap()
+        ::later::encoder::decode(payload).unwrap()
     }
     fn get_ptype(&self) -> String {
         "sample_message".into()
@@ -183,12 +183,12 @@ impl ::later::core::JobParameter for SampleMessage {
 }
 impl ::later::core::JobParameter for AnotherSampleMessage {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        let result = ::later::serde_json::to_vec(&self);
+        let result = ::later::encoder::encode(&self);
         let result = ::later::anyhow::Context::context(result, "unable to serialize");
         Ok(result?)
     }
     fn from_bytes(payload: &[u8]) -> Self {
-        ::later::serde_json::from_slice(payload).unwrap()
+        ::later::encoder::decode(payload).unwrap()
     }
     fn get_ptype(&self) -> String {
         "another_sample_message".into()

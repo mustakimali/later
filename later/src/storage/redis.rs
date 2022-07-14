@@ -1,7 +1,7 @@
+use super::{Storage, StorageIter};
+use crate::encoder;
 use redis::{Client, Commands, Connection};
 use serde::de::DeserializeOwned;
-
-use super::{Storage, StorageIter};
 
 pub struct Redis {
     _client: Client,
@@ -31,7 +31,7 @@ impl Redis {
         T: DeserializeOwned,
     {
         match self.connection.get::<_, Vec<u8>>(key).ok() {
-            Some(bytes) => serde_json::from_slice::<T>(&bytes).ok(),
+            Some(bytes) => encoder::decode::<T>(&bytes).ok(),
             None => todo!(),
         }
     }
@@ -60,7 +60,7 @@ impl Storage for Redis {
         match self.set(&key, value) {
             Ok(_) => {
                 // store the count
-                self.set(&count_key, &serde_json::to_vec(&item_in_range)?)?;
+                self.set(&count_key, &encoder::encode(&item_in_range)?)?;
 
                 Ok(())
             }

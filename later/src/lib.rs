@@ -1,9 +1,10 @@
 #![doc = include_str!("../README.md")]
 use crate::core::{BgJobHandler, JobParameter};
-use crate::models::EnqueuedJob;
+use crate::models::Job;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
 
+use models::{DelayedStage, EnqueuedStage, Stage, WaitingStage};
 use persist::Persist;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,9 +17,9 @@ use storage::Storage;
 
 pub use anyhow;
 pub use later_derive::background_job;
-pub use serde_json;
 
 pub mod core;
+pub mod encoder;
 mod id;
 mod models;
 mod persist;
@@ -116,32 +117,74 @@ impl BackgroundJobServerPublisher {
         // self.storage.set(format!("job-{}", id), job);
         // self.storage.push_job_id(id);
 
-        let message = models::EnqueuedJob {
+        let job = models::Job {
             id: JobId(id.clone()),
             payload_type: message.get_ptype(),
             payload: message
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
-            parent_id: parent_job_id.clone(),
-            not_before: delay_until.clone(),
+            stages: {
+                if let Some(parent_job_id) = parent_job_id {
+                    Stage::Waiting(WaitingStage {
+                        date: chrono::Utc::now(),
+                        parent_id: parent_job_id,
+                    })
+                } else if let Some(delay_until) = delay_until {
+                    Stage::Delayed(DelayedStage {
+                        date: chrono::Utc::now(),
+                        not_before: delay_until,
+                    })
+                } else {
+                    Stage::Enqueued(EnqueuedStage {
+                        date: chrono::Utc::now(),
+                        previous_stages: Vec::default(),
+                    })
+                }
+            },
         };
-        let message_bytes = serde_json::to_vec(&message)?;
 
         // save the job
-        self.storage.save_jobs(message.id.clone(), &message_bytes)?;
+        self.save(&job)?;
 
-        if let Some(_parent_job_id) = parent_job_id {
+        if let Stage::Delayed(_) = job.stages {
             // continuation
             // - enqueue if parent is already complete
             // - schedule self message to check an enqueue later (to prevent race)
         }
 
-        let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        let exchange = Exchange::direct(&channel);
-
-        exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
+        self.handle_job(job)?;
 
         Ok(JobId(id))
+    }
+
+    fn save(&self, job: &Job) -> anyhow::Result<()> {
+        let message_bytes = encoder::encode(&job)?;
+        self.storage.save_jobs(job.id.clone(), &message_bytes)
+    }
+
+    fn handle_job(&self, job: Job) -> anyhow::Result<()> {
+        match &job.stages {
+            Stage::Delayed(delayed) => {
+                if chrono::Utc::now() > delayed.date {
+                    let job = job.transition();
+                    self.save(&job)?;
+
+                    self.handle_job(job)?;
+                }
+            }
+            Stage::Waiting(_) => todo!(),
+            Stage::Enqueued(_) => {
+                let message_bytes = encoder::encode(&job)?;
+                let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+                let exchange = Exchange::direct(&channel);
+
+                exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
+            }
+            Stage::Running(_) => todo!(),
+            Stage::Requeued(_) => todo!(),
+        }
+
+        Ok(())
     }
 }
 
@@ -172,8 +215,7 @@ where
     }
 
     pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.handler.get_publisher()
-            .enqueue(message)
+        self.handler.get_publisher().enqueue(message)
     }
 }
 
@@ -206,7 +248,7 @@ where
     for (i, message) in consumer.receiver().iter().enumerate() {
         match message {
             amiquip::ConsumerMessage::Delivery(delivery) => {
-                match serde_json::from_slice::<EnqueuedJob>(&delivery.body) {
+                match encoder::decode::<Job>(&delivery.body) {
                     Ok(message) => {
                         // send to app and ack if successful
                         let id = message.id.clone();
