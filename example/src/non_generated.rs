@@ -1,7 +1,7 @@
 use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
 
 struct AppContext {
-    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>, Redis>,
+    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
 impl AppContext {
@@ -37,12 +37,11 @@ fn handle_another_sample_message(
 pub fn test_non_generated() {
     let job_ctx = JobContext {};
     let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
-
     let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
-        storage,
+        Box::new(storage),
     )
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
@@ -82,15 +81,14 @@ impl<C> std::ops::Deref for DeriveHandlerContext<C> {
     }
 }
 
-pub struct DeriveHandlerBuilder<C, S>
+pub struct DeriveHandlerBuilder<C>
 where
     C: Sync + Send + 'static,
-    S: ::later::storage::Storage,
 {
     ctx: C,
     id: String,
     amqp_address: String,
-    storage: S,
+    storage: Box<dyn ::later::storage::Storage>,
     sample_message: ::core::option::Option<
         Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> anyhow::Result<()> + Send + Sync>,
     >,
@@ -102,21 +100,25 @@ where
         >,
     >,
 }
-impl<C, S> DeriveHandlerBuilder<C, S>
+impl<C> DeriveHandlerBuilder<C>
 where
     C: Sync + Send + 'static,
-    S: ::later::storage::Storage,
 {
-    pub fn new(context: C, id: String, amqp_address: String, storage: S) -> Self
+    pub fn new(
+        context: C,
+        id: String,
+        amqp_address: String,
+        storage: Box<dyn ::later::storage::Storage>,
+    ) -> Self
     where
         C: Sync + Send + 'static,
-        S: ::later::storage::Storage,
     {
         Self {
             ctx: context,
             id,
             amqp_address,
             storage,
+
             sample_message: ::core::option::Option::None,
             another_sample_message: ::core::option::Option::None,
         }
@@ -147,13 +149,12 @@ where
         self.another_sample_message = Some(Box::new(handler));
         self
     }
-    pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, DeriveHandler<C>, S>>
-    where
-        C: Sync + Send + Clone + 'static,
-        S: later::storage::Storage,
-    {
-        let publisher =
-            ::later::BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
+    pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, DeriveHandler<C>>> {
+        let publisher = ::later::BackgroundJobServerPublisher::new(
+            self.id.clone(),
+            self.amqp_address.clone(),
+            self.storage,
+        )?;
         let ctx = DeriveHandlerContext {
             job: publisher,
             app: self.ctx,
@@ -164,8 +165,7 @@ where
             another_sample_message: self.another_sample_message,
         };
 
-        let publisher = ::later::BackgroundJobServerPublisher::new(self.id, self.amqp_address)?;
-        BackgroundJobServer::start(handler, publisher, self.storage)
+        BackgroundJobServer::start(handler)
     }
 }
 impl ::later::core::JobParameter for SampleMessage {
@@ -237,5 +237,9 @@ where
     }
     fn get_ctx(&self) -> &C {
         &self.ctx.app
+    }
+
+    fn get_publisher(&self) -> &::later::BackgroundJobServerPublisher {
+        &self.ctx.job
     }
 }

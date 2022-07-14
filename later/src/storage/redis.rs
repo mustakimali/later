@@ -1,19 +1,18 @@
 use redis::{Client, Commands, Connection};
 use serde::de::DeserializeOwned;
 
-use super::Storage;
+use super::{Storage, StorageIter};
 
 pub struct Redis {
     _client: Client,
     connection: Connection,
-    scan: Option<ScanRange>,
 }
 
-#[derive(Clone)]
 struct ScanRange {
     key: String,
     _count: i32,
     index: i32,
+    parent: Redis,
 }
 
 impl Redis {
@@ -24,7 +23,6 @@ impl Redis {
         Ok(Self {
             _client: client,
             connection: conn,
-            scan: None,
         })
     }
 
@@ -74,36 +72,31 @@ impl Storage for Redis {
         Ok(self.connection.set(key, value)?)
     }
 
-    fn scan_range(mut self, key: &str) -> Self {
+    fn scan_range(mut self, key: &str) -> Box<dyn StorageIter> {
         let count_key = format!("{}-count", key);
         let item_in_range = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| 0);
 
-        self.scan = Some(ScanRange {
+        let scan = ScanRange {
             key: key.to_string(),
             _count: item_in_range,
             index: 0,
-        });
+            parent: self,
+        };
 
-        self
+        Box::new(scan)
     }
 }
 
-impl Iterator for Redis {
+impl StorageIter for ScanRange {}
+impl Iterator for ScanRange {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(scan) = &self.scan {
-            let key = format!("{}-{}", scan.key, scan.index);
+        let key = format!("{}-{}", self.key, self.index + 1);
 
-            self.scan = Some(ScanRange {
-                index: scan.index + 1,
-                ..scan.clone()
-            });
+        self.index += 1;
 
-            self.get(&key)
-        } else {
-            None
-        }
+        self.parent.get(&key)
     }
 }
 

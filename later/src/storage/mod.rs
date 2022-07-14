@@ -5,14 +5,14 @@ pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
 
-pub trait Storage {
+pub trait Storage: Sync + Send {
     fn get(&mut self, key: &str) -> Option<Vec<u8>>;
     fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     fn push(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    fn scan_range(self, key: &str) -> Self
-    where
-        Self: Iterator; // Box<dyn Iterator<Item = Vec<u8>>>;
+    fn scan_range(self, key: &str) -> Box<dyn StorageIter>;
 }
+
+pub trait StorageIter: Iterator<Item = Vec<u8>> {}
 
 pub struct MemoryStorage {
     _storage: HashMap<String, String>,

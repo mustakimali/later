@@ -79,17 +79,17 @@ impl ToTokens for TraitImpl {
             }
 
             // Build the stub
-            pub struct #builder_type_name<C, S> {
+            pub struct #builder_type_name<C> {
                 ctx: C,
                 id: String,
                 amqp_address: String,
-                storage: S,
+                storage: Box<dyn ::later::storage::Storage>,
 
                 #(#fields_for_builder)*
             }
 
-            impl<C, S> #builder_type_name<C, S> {
-                pub fn new(context: C, id: String, amqp_address: String, storage: S) -> Self {
+            impl<C> #builder_type_name<C> {
+                pub fn new(context: C, id: String, amqp_address: String, storage: Box<dyn ::later::storage::Storage>) -> Self {
                     Self {
                         ctx: context,
                         id,
@@ -102,12 +102,15 @@ impl ToTokens for TraitImpl {
 
                 #(#builder_methods)*
 
-                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>, S>>
+                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
                 where
                     C: Sync + Send + Clone + 'static,
-                    S: later::storage::Storage, 
                 {
-                    let publisher = later::BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
+                    let publisher = later::BackgroundJobServerPublisher::new(
+                        self.id.clone(),
+                        self.amqp_address.clone(),
+                        self.storage,
+                    )?;
                     let ctx = #context_name {
                         job: publisher,
                         app: self.ctx,
@@ -117,8 +120,7 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    let publisher = later::BackgroundJobServerPublisher::new(self.id, self.amqp_address)?;
-                    BackgroundJobServer::start(handler, publisher, self.storage)
+                    BackgroundJobServer::start(handler)
                 }
             }
 
@@ -141,6 +143,10 @@ impl ToTokens for TraitImpl {
 
                 fn get_ctx(&self) -> &C {
                     &self.ctx.app
+                }
+
+                fn get_publisher(&self) -> &::later::BackgroundJobServerPublisher {
+                    &self.ctx.job
                 }
             }
         })

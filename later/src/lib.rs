@@ -4,6 +4,7 @@ use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
 
+use persist::Persist;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
@@ -18,7 +19,9 @@ pub use later_derive::background_job;
 pub use serde_json;
 
 pub mod core;
+mod id;
 mod models;
+mod persist;
 pub mod storage;
 
 pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
@@ -31,27 +34,29 @@ impl Display for JobId {
     }
 }
 
-pub struct BackgroundJobServer<C, H, S>
+pub struct BackgroundJobServer<C, H>
 where
     H: BgJobHandler<C> + Sync + Send,
-    S: Storage,
 {
     ctx: PhantomData<C>,
-    handler: PhantomData<H>,
-    publisher: BackgroundJobServerPublisher,
+    handler: Arc<H>,
     _workers: Vec<JoinHandle<anyhow::Result<()>>>,
-    storage: S,
 }
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
     channel: Mutex<Channel>,
     routing_key: String,
+    storage: Persist,
     _connection: Connection,
 }
 
 impl BackgroundJobServerPublisher {
-    pub fn new(id: String, amqp_address: String) -> anyhow::Result<Self> {
+    pub fn new(
+        id: String,
+        amqp_address: String,
+        storage: Box<dyn Storage>,
+    ) -> anyhow::Result<Self> {
         let mut connection = Connection::insecure_open(&amqp_address)?;
         let channel = connection.open_channel(None)?;
         let routing_key = format!("later-{}", id);
@@ -59,6 +64,7 @@ impl BackgroundJobServerPublisher {
         Ok(Self {
             _amqp_address: amqp_address,
             _connection: connection,
+            storage: Persist::new(storage),
 
             channel: Mutex::new(channel),
             routing_key: routing_key,
@@ -122,6 +128,7 @@ impl BackgroundJobServerPublisher {
         let message_bytes = serde_json::to_vec(&message)?;
 
         // save the job
+        self.storage.save_jobs(message.id.clone(), &message_bytes)?;
 
         if let Some(_parent_job_id) = parent_job_id {
             // continuation
@@ -138,19 +145,15 @@ impl BackgroundJobServerPublisher {
     }
 }
 
-impl<C, H, S> BackgroundJobServer<C, H, S>
+impl<C, H> BackgroundJobServer<C, H>
 where
-    C: Sync + Send + Clone + 'static,
+    C: Sync + Send + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
-    S: Storage,
 {
-    pub fn start(
-        handler: H,
-        publisher: BackgroundJobServerPublisher,
-        storage: S,
-    ) -> anyhow::Result<Self> {
+    pub fn start(handler: H) -> anyhow::Result<Self> {
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
+        let publisher = handler.get_publisher();
         for id in 1..5 {
             let amqp_address = publisher._amqp_address.clone();
             let routing_key = publisher.routing_key.clone();
@@ -163,15 +166,14 @@ where
 
         Ok(Self {
             ctx: PhantomData,
-            handler: PhantomData,
-            publisher: publisher,
+            handler: handler,
             _workers: workers,
-            storage,
         })
     }
 
     pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.publisher.enqueue(message)
+        self.handler.get_publisher()
+            .enqueue(message)
     }
 }
 
@@ -182,7 +184,7 @@ fn start_worker<C, H>(
     routing_key: &str,
 ) -> anyhow::Result<()>
 where
-    C: Sync + Send + Clone,
+    C: Sync + Send,
     H: core::BgJobHandler<C> + Sync + Send,
 {
     println!("[Worker#{}] Starting", worker_id);

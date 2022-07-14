@@ -34,7 +34,7 @@ fn handle_another_sample_message(
 }
 
 struct AppContext {
-    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>, Redis>,
+    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
 #[get("/")]
@@ -53,7 +53,7 @@ fn rocket() -> _ {
         job_ctx,
         "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
-        storage,
+        Box::new(storage),
     )
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
