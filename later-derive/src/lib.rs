@@ -78,20 +78,23 @@ impl ToTokens for TraitImpl {
                 }
             }
 
-            pub struct #builder_type_name<C> {
+            // Build the stub
+            pub struct #builder_type_name<C, S> {
                 ctx: C,
                 id: String,
                 amqp_address: String,
+                storage: S,
 
                 #(#fields_for_builder)*
             }
 
-            impl<C> #builder_type_name<C> {
-                pub fn new(context: C, id: String, amqp_address: String) -> Self {
+            impl<C, S> #builder_type_name<C, S> {
+                pub fn new(context: C, id: String, amqp_address: String, storage: S) -> Self {
                     Self {
                         ctx: context,
                         id,
                         amqp_address,
+                        storage,
 
                         #(#uninitialized_fields)*
                     }
@@ -99,9 +102,10 @@ impl ToTokens for TraitImpl {
 
                 #(#builder_methods)*
 
-                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
+                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>, S>>
                 where
                     C: Sync + Send + Clone + 'static,
+                    S: later::storage::Storage, 
                 {
                     let publisher = later::BackgroundJobServerPublisher::new(self.id.clone(), self.amqp_address.clone())?;
                     let ctx = #context_name {
@@ -114,7 +118,7 @@ impl ToTokens for TraitImpl {
                     };
 
                     let publisher = later::BackgroundJobServerPublisher::new(self.id, self.amqp_address)?;
-                    BackgroundJobServer::start(handler, publisher)
+                    BackgroundJobServer::start(handler, publisher, self.storage)
                 }
             }
 
@@ -248,7 +252,7 @@ impl ToTokens for MatchArm {
         tokens.extend(quote! {
             stringify!(#name) => {
                 use ::later::core::JobParameter;
-                
+
                 let payload = #type_name::from_bytes(payload);
                 if let Some(handler) = &self.#name {
                     (handler)(&self.ctx, payload)

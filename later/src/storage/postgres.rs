@@ -1,4 +1,1 @@
-pub struct Postgres {
-
-}
-
+pub struct Postgres {}

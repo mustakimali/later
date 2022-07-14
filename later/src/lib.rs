@@ -3,6 +3,7 @@ use crate::core::{BgJobHandler, JobParameter};
 use crate::models::EnqueuedJob;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
@@ -10,6 +11,7 @@ use std::{
     sync::{Arc, Mutex},
     thread::JoinHandle,
 };
+use storage::Storage;
 
 pub use anyhow;
 pub use later_derive::background_job;
@@ -19,6 +21,8 @@ pub mod core;
 mod models;
 pub mod storage;
 
+pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JobId(String);
 impl Display for JobId {
@@ -27,14 +31,16 @@ impl Display for JobId {
     }
 }
 
-pub struct BackgroundJobServer<C, H>
+pub struct BackgroundJobServer<C, H, S>
 where
     H: BgJobHandler<C> + Sync + Send,
+    S: Storage,
 {
     ctx: PhantomData<C>,
     handler: PhantomData<H>,
     publisher: BackgroundJobServerPublisher,
     _workers: Vec<JoinHandle<anyhow::Result<()>>>,
+    storage: S,
 }
 
 pub struct BackgroundJobServerPublisher {
@@ -59,15 +65,46 @@ impl BackgroundJobServerPublisher {
         })
     }
 
-    pub fn enqueue_continue(&self, parent_job_id: JobId, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.enqueue_internal(Some(parent_job_id), message)
+    pub fn enqueue_continue(
+        &self,
+        parent_job_id: JobId,
+        message: impl JobParameter,
+    ) -> anyhow::Result<JobId> {
+        self.enqueue_internal(message, Some(parent_job_id), None)
+    }
+
+    pub fn enqueue_delayed(
+        &self,
+        message: impl JobParameter,
+        delay: std::time::Duration,
+    ) -> anyhow::Result<JobId> {
+        let enqueue_time = chrono::Utc::now()
+            .checked_add_signed(chrono::Duration::from_std(delay)?)
+            .ok_or(anyhow::anyhow!("Error calculating enqueue time"))?;
+
+        self.enqueue_delayed_at(message, enqueue_time)
+    }
+    pub fn enqueue_delayed_at(
+        &self,
+        _message: impl JobParameter,
+        time: chrono::DateTime<chrono::Utc>,
+    ) -> anyhow::Result<JobId> {
+        if time <= chrono::Utc::now() {
+            return Err(anyhow::anyhow!("Time must be in the future"));
+        }
+        todo!()
     }
 
     pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.enqueue_internal(None, message)
+        self.enqueue_internal(message, None, None)
     }
 
-    fn enqueue_internal(&self, parent_job_id: Option<JobId>, message: impl JobParameter) -> anyhow::Result<JobId> {
+    fn enqueue_internal(
+        &self,
+        message: impl JobParameter,
+        parent_job_id: Option<JobId>,
+        delay_until: Option<UtcDateTime>,
+    ) -> anyhow::Result<JobId> {
         let id = uuid::Uuid::new_v4().to_string();
 
         // self.storage.set(format!("job-{}", id), job);
@@ -80,6 +117,7 @@ impl BackgroundJobServerPublisher {
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
             parent_id: parent_job_id.clone(),
+            not_before: delay_until.clone(),
         };
         let message_bytes = serde_json::to_vec(&message)?;
 
@@ -89,9 +127,7 @@ impl BackgroundJobServerPublisher {
             // continuation
             // - enqueue if parent is already complete
             // - schedule self message to check an enqueue later (to prevent race)
-
         }
-
 
         let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
         let exchange = Exchange::direct(&channel);
@@ -102,12 +138,17 @@ impl BackgroundJobServerPublisher {
     }
 }
 
-impl<C, H> BackgroundJobServer<C, H>
+impl<C, H, S> BackgroundJobServer<C, H, S>
 where
     C: Sync + Send + Clone + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
+    S: Storage,
 {
-    pub fn start(handler: H, publisher: BackgroundJobServerPublisher) -> anyhow::Result<Self> {
+    pub fn start(
+        handler: H,
+        publisher: BackgroundJobServerPublisher,
+        storage: S,
+    ) -> anyhow::Result<Self> {
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         for id in 1..5 {
@@ -125,6 +166,7 @@ where
             handler: PhantomData,
             publisher: publisher,
             _workers: workers,
+            storage,
         })
     }
 

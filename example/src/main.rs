@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use later::BackgroundJobServer;
+use later::{storage::redis::Redis, BackgroundJobServer};
 use rocket::State;
 
 mod bg;
@@ -25,13 +25,16 @@ fn handle_another_sample_message(
         txt: "test".to_string(),
     })?;
 
-    println!("On Handle handle_another_sample_message: {:?}, enqueued: {}", payload, id);
+    println!(
+        "On Handle handle_another_sample_message: {:?}, enqueued: {}",
+        payload, id
+    );
 
     Ok(())
 }
 
 struct AppContext {
-    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
+    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>, Redis>,
 }
 
 #[get("/")]
@@ -45,10 +48,12 @@ fn hello(state: &State<AppContext>) -> String {
 #[launch]
 fn rocket() -> _ {
     let job_ctx = JobContext {};
+    let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
     let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
         "amqp://guest:guest@localhost:5672".into(),
+        storage,
     )
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
