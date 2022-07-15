@@ -158,8 +158,7 @@ impl BackgroundJobServerPublisher {
     }
 
     fn save(&self, job: &Job) -> anyhow::Result<()> {
-        let message_bytes = encoder::encode(&job)?;
-        self.storage.save_jobs(job.id.clone(), &message_bytes)
+        self.storage.save_jobs(job.id.clone(), job)
     }
 
     fn handle_job(&self, job: Job) -> anyhow::Result<()> {
