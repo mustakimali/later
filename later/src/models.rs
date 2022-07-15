@@ -23,7 +23,7 @@ pub(crate) enum Stage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct DelayedStage {
     pub date: UtcDateTime,
 
@@ -31,7 +31,7 @@ pub(crate) struct DelayedStage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct WaitingStage {
     pub date: UtcDateTime,
 
@@ -39,7 +39,7 @@ pub(crate) struct WaitingStage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct EnqueuedStage {
     pub date: UtcDateTime,
 
@@ -47,7 +47,7 @@ pub(crate) struct EnqueuedStage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct RunningStage {
     pub date: UtcDateTime,
 
@@ -55,7 +55,7 @@ pub(crate) struct RunningStage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct SuccessStage {
     pub date: UtcDateTime,
 
@@ -63,7 +63,7 @@ pub(crate) struct SuccessStage {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct RequeuedStage {
     pub date: UtcDateTime,
     pub requeue_count: u32,

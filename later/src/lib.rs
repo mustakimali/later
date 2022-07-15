@@ -263,12 +263,13 @@ where
                             consumer.ack(delivery)?;
                         }
                     }
-                    Err(_err) => {
+                    Err(err) => {
                         println!(
-                            "[Worker#{}] ({:>3}) Unknown message received [{} bytes]",
+                            "[Worker#{}] ({:>3}) Unknown message received [{} bytes]: {}",
                             worker_id,
                             i,
-                            delivery.body.len()
+                            delivery.body.len(),
+                            err
                         );
                         consumer.nack(delivery, false)?;
                     }
