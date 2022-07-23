@@ -20,6 +20,8 @@ pub(crate) enum Stage {
     Enqueued(EnqueuedStage),
     Running(RunningStage),
     Requeued(RequeuedStage),
+    Success(SuccessStage),
+    Failed(FailedStage),
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -64,6 +66,15 @@ pub(crate) struct SuccessStage {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
+pub(crate) struct FailedStage {
+    pub date: UtcDateTime,
+    pub reason: String,
+
+    pub previous_stages: Vec<Stage>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
 pub(crate) struct RequeuedStage {
     pub date: UtcDateTime,
     pub requeue_count: u32,
@@ -72,37 +83,33 @@ pub(crate) struct RequeuedStage {
 }
 
 impl Job {
-    pub fn transition(self) -> Job{
+    pub fn transition(self) -> Job {
         Job {
             stages: self.stages.transition(),
-            .. self
+            ..self
         }
     }
 }
 
 impl Stage {
-    pub fn transition(self) -> Stage{
+    pub fn transition(self) -> Stage {
         match self {
-            Stage::Delayed(delayed) => {
-                Stage::Enqueued(EnqueuedStage {
-                    date: chrono::Utc::now(),
-                    previous_stages: vec![Stage::Delayed(delayed.clone())],
-                })
-            }
-            Stage::Waiting(waiting) => {
-                Stage::Enqueued(EnqueuedStage {
-                    date: chrono::Utc::now(),
-                    previous_stages: vec![Stage::Waiting(waiting.clone())],
-                })
-            }
-            Stage::Enqueued(enqueued) => {
-                Stage::Running(RunningStage {
-                    date: chrono::Utc::now(),
-                    previous_stages: enqueued.previous_stages.clone(),
-                })
-            }
+            Stage::Delayed(delayed) => Stage::Enqueued(EnqueuedStage {
+                date: chrono::Utc::now(),
+                previous_stages: vec![Stage::Delayed(delayed.clone())],
+            }),
+            Stage::Waiting(waiting) => Stage::Enqueued(EnqueuedStage {
+                date: chrono::Utc::now(),
+                previous_stages: vec![Stage::Waiting(waiting.clone())],
+            }),
+            Stage::Enqueued(enqueued) => Stage::Running(RunningStage {
+                date: chrono::Utc::now(),
+                previous_stages: enqueued.previous_stages.clone(),
+            }),
             Stage::Running(_) => todo!(),
             Stage::Requeued(_) => todo!(),
+            Stage::Success(_) => self /* Terminal */,
+            Stage::Failed(_) => self /* Terminal */,
         }
     }
 }

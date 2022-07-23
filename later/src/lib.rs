@@ -171,7 +171,12 @@ impl BackgroundJobServerPublisher {
                     self.handle_job(job)?;
                 }
             }
-            Stage::Waiting(_) => todo!(),
+            Stage::Waiting(_) => {
+                let job = job.transition();
+                self.save(&job)?;
+
+                self.handle_job(job)?;
+            }
             Stage::Enqueued(_) => {
                 let message_bytes = encoder::encode(&job)?;
                 let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -179,8 +184,13 @@ impl BackgroundJobServerPublisher {
 
                 exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
             }
-            Stage::Running(_) => todo!(),
+            Stage::Running(_) => {
+                // stage is handled in consumer
+            },
             Stage::Requeued(_) => todo!(),
+
+            Stage::Success(_) => todo!(),
+            Stage::Failed(_) => todo!(),
         }
 
         Ok(())
@@ -251,13 +261,17 @@ where
                     Ok(message) => {
                         // send to app and ack if successful
                         let id = message.id.clone();
-                        let ptype = message.payload_type;
-                        let payload = message.payload;
+                        let ptype = message.payload_type.clone();
+                        let payload = message.payload.clone();
 
                         println!(
                             "[Worker#{}] ({:>3}) Message received [Id: {}]",
                             worker_id, i, id
                         );
+
+                        // transition to `running` state
+                        let running_job = message.transition();
+                        handler.get_publisher().save(&running_job)?;
 
                         if let Ok(_) = handler.dispatch(ptype, &payload) {
                             consumer.ack(delivery)?;
