@@ -152,6 +152,7 @@ impl BackgroundJobServerPublisher {
             // continuation
             // - enqueue if parent is already complete
             // - schedule self message to check an enqueue later (to prevent race)
+            
         }
 
         self.handle_job_enqueue_initial(job)?;

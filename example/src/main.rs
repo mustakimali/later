@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate rocket;
 
+use core::time;
+
 use bg::*;
 use later::{storage::redis::Redis, BackgroundJobServer};
 use rocket::State;
@@ -14,6 +16,7 @@ fn handle_sample_message(
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
+    std::thread::sleep_ms(500);
 
     Ok(())
 }
@@ -24,6 +27,12 @@ fn handle_another_sample_message(
     let id = _ctx.enqueue(SampleMessage {
         txt: "test".to_string(),
     })?;
+    _ctx.enqueue_continue(
+        id.clone(),
+        SampleMessage {
+            txt: format!("Continuation of job {}", id),
+        },
+    )?;
 
     println!(
         "On Handle handle_another_sample_message: {:?}, enqueued: {}",
