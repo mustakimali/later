@@ -166,7 +166,7 @@ impl BackgroundJobServerPublisher {
         self.storage.save_jobs(job.id.clone(), job)
     }
 
-    fn expire(&self, job: &Job, duration: Duration) {
+    fn expire(&self, _job: &Job, _duration: Duration) {
         todo!()
     }
 

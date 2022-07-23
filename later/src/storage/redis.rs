@@ -1,16 +1,20 @@
+use std::sync::{Arc, Mutex, MutexGuard};
+
 use super::{Storage, StorageIter};
 use crate::encoder;
 use redis::{Client, Commands, Connection};
 use serde::de::DeserializeOwned;
 
+#[derive(Clone)]
 pub struct Redis {
     _client: Client,
-    connection: Connection,
+    connection: Arc<Mutex<Connection>>,
 }
 
 struct ScanRange {
     key: String,
     _count: usize,
+    start: usize,
     index: usize,
     parent: Redis,
 }
@@ -22,40 +26,56 @@ impl Redis {
 
         Ok(Self {
             _client: client,
-            connection: conn,
+            connection: Arc::new(Mutex::new(conn)),
         })
     }
 
-    fn get_of_type<T>(&mut self, key: &str) -> Option<T>
+    fn get_of_type<T>(&self, key: &str) -> Option<T>
     where
         T: DeserializeOwned,
     {
-        match self.connection.get::<_, Vec<u8>>(key).ok() {
-            Some(bytes) => encoder::decode::<T>(&bytes).ok(),
-            None => todo!(),
+        match self
+            .get_connection()
+            .ok()
+            .map(|mut c| c.get::<_, Vec<u8>>(key))
+        {
+            Some(Ok(bytes)) => encoder::decode::<T>(&bytes).ok(),
+            _ => None,
         }
+    }
+
+    fn get_connection(&self) -> anyhow::Result<MutexGuard<'_, Connection>> {
+        self.connection.lock().map_err(|e| anyhow::anyhow!("{}", e))
     }
 }
 
 impl Storage for Redis {
-    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        match self.connection.get::<_, Vec<u8>>(key) {
-            Ok(data) => {
+    fn get(&self, key: &str) -> Option<Vec<u8>> {
+        match self
+            .get_connection()
+            .ok()
+            .map(|mut c| c.get::<_, Vec<u8>>(key))
+        {
+            Some(Ok(data)) => {
                 if data.len() == 0 {
                     None
                 } else {
                     Some(data)
                 }
             }
-            Err(_) => None,
+            _ => None,
         }
     }
 
-    fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        Ok(self.connection.set(key, value)?)
+    fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+        Ok(self.get_connection()?.set(key, value)?)
     }
 
-    fn push(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    fn del(&self, key: &str) -> anyhow::Result<()> {
+        Ok(self.get_connection()?.del(key)?)
+    }
+
+    fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let item_in_range = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| -1) + 1;
 
@@ -72,16 +92,21 @@ impl Storage for Redis {
         }
     }
 
-    fn trim(&mut self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
+    fn trim(&self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
         let start_key = format!("{}-start", key);
         self.set(&start_key, &encoder::encode(range.get_index())?)?;
 
-        // ToDo: delete keys before current index
+        let start = range.get_start();
+        let end = range.get_index();
+        for i in start..end {
+            let key = get_scan_item_key(key, i);
+            let _ = self.del(&key);
+        }
 
         Ok(())
     }
 
-    fn scan_range(mut self, key: &str) -> Box<dyn StorageIter> {
+    fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
         let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
         let start_from_idx = self.get_of_type::<usize>(&start_key).unwrap_or_else(|| 0);
@@ -90,8 +115,9 @@ impl Storage for Redis {
         let scan = ScanRange {
             key: key.to_string(),
             _count: item_in_range,
+            start: start_from_idx,
             index: start_from_idx,
-            parent: self,
+            parent: self.clone(),
         };
 
         Box::new(scan)
@@ -102,12 +128,16 @@ impl StorageIter for ScanRange {
     fn get_index(&self) -> usize {
         self.index
     }
+
+    fn get_start(&self) -> usize {
+        self.start
+    }
 }
 impl Iterator for ScanRange {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let key = format!("{}-{}", self.key, self.index + 1);
+        let key = get_scan_item_key(&self.key, self.index);
 
         self.index += 1;
 
@@ -115,9 +145,15 @@ impl Iterator for ScanRange {
     }
 }
 
+fn get_scan_item_key(range_key: &str, idx: usize) -> String {
+    format!("{}-{}", range_key, idx)
+}
+
 #[cfg(test)]
 mod test {
-    use std::time::SystemTime;
+    
+
+    use uuid::Uuid;
 
     use super::*;
 
@@ -125,7 +161,7 @@ mod test {
     fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let mut storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
         storage.set("key", my_data).unwrap();
 
         let result = storage.get("key").unwrap();
@@ -133,17 +169,10 @@ mod test {
     }
 
     #[test]
-    fn basic_range() {
-        let key = format!(
-            "key-{}",
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis()
-                .to_string()
-        );
+    fn range_basic() {
+        let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let mut storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
 
         for _ in 0..10 {
             storage
@@ -155,5 +184,42 @@ mod test {
         let count = scan_result.count();
 
         assert_eq!(10, count);
+    }
+
+    #[test]
+    fn range_trim() {
+        let key = format!("key-{}", Uuid::new_v4().to_string());
+
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+
+        for idx in 0..100 {
+            storage.push(&key, idx.to_string().as_bytes()).unwrap();
+        }
+
+        assert_eq!(100, storage.scan_range(&key).count());
+
+        // scan first 50
+        let mut range = storage.scan_range(&key);
+        let mut counter = 0;
+        while counter < 50 {
+            let next_item = range.next();
+            assert!(next_item.is_some());
+
+            counter += 1;
+        }
+
+        // trim
+        let _ = storage.trim(&key, range);
+
+        // should have only 50
+        let range = storage.scan_range(&key);
+        assert_eq!(50, range.count());
+
+        // should be empty
+        let mut range = storage.scan_range(&key);
+        while range.next().is_some() {}
+        let _ = storage.trim(&key, range);
+
+        assert_eq!(0, storage.scan_range(&key).count()); // should be empty
     }
 }

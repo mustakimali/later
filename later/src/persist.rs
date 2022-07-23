@@ -1,9 +1,9 @@
 use std::sync::RwLock;
 
 use crate::{
-    encoder::{self, encode},
+    encoder::{self},
     id::IdOf,
-    models::{Job, Stage, StageName, WaitingStage},
+    models::{Job, Stage, StageName},
     storage::Storage,
     JobId,
 };
@@ -25,7 +25,7 @@ impl Persist {
             .write()
             .map_err(|e| anyhow::anyhow!("{}", e))
             .ok()
-            .and_then(|mut storage| storage.get(&id.to_string()))
+            .and_then(|storage| storage.get(&id.to_string()))
             .and_then(|bytes| encoder::decode::<Job>(&bytes).ok())
     }
 

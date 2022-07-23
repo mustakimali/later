@@ -6,15 +6,17 @@ pub mod postgres;
 pub mod redis;
 
 pub trait Storage: Sync + Send {
-    fn get(&mut self, key: &str) -> Option<Vec<u8>>;
-    fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    fn get(&self, key: &str) -> Option<Vec<u8>>;
+    fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    fn del(&self, key: &str) -> anyhow::Result<()>;
 
-    fn push(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    fn trim(&mut self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
-    fn scan_range(self, key: &str) -> Box<dyn StorageIter>;
+    fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    fn trim(&self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
+    fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
 }
 
 pub trait StorageIter: Iterator<Item = Vec<u8>> {
+    fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
 }
 
