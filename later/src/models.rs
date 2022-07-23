@@ -1,6 +1,12 @@
 use crate::{JobId, UtcDateTime};
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "ty")]
+pub(crate) enum MqMessage {
+    PollDelayedJobs,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct Job {
     pub id: JobId,

@@ -4,7 +4,7 @@ use crate::models::Job;
 use amiquip::{Channel, Connection, ConsumerOptions, Exchange, Publish, QueueDeclareOptions};
 use anyhow::Context;
 
-use models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
+use models::{DelayedStage, EnqueuedStage, JobConfig, MqMessage, Stage, WaitingStage};
 use persist::Persist;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -163,6 +163,10 @@ impl BackgroundJobServerPublisher {
         if job.stage.is_polling_required() {
             self.storage.save_job_id(&job.id, &job.stage)?;
         }
+        if let Stage::Waiting(w) = &job.stage {
+            self.storage
+                .save_continuation(&job.id, w.parent_id.clone())?;
+        }
         self.storage.save_jobs(job.id.clone(), job)
     }
 
@@ -187,7 +191,7 @@ impl BackgroundJobServerPublisher {
                 self.handle_job_enqueue_initial(job)?;
             }
             Stage::Enqueued(_) => {
-                let message_bytes = encoder::encode(&job)?;
+                let message_bytes = encoder::encode(job)?;
                 let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
                 let exchange = Exchange::direct(&channel);
 
@@ -211,6 +215,8 @@ where
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
+
+        // workers to process jobs (distributed)
         for id in 1..5 {
             let amqp_address = publisher._amqp_address.clone();
             let routing_key = publisher.routing_key.clone();
@@ -220,6 +226,8 @@ where
                 start_worker(handler, id, &amqp_address, &routing_key)
             }));
         }
+
+        // workers to poll jobs
 
         Ok(Self {
             ctx: PhantomData,
@@ -263,36 +271,7 @@ where
         match message {
             amiquip::ConsumerMessage::Delivery(delivery) => {
                 match encoder::decode::<Job>(&delivery.body) {
-                    Ok(job) => {
-                        // send to app and ack if successful
-                        let id = job.id.clone();
-                        let ptype = job.payload_type.clone();
-                        let payload = job.payload.clone();
-
-                        println!(
-                            "[Worker#{}] ({:>3}) Message received [Id: {}]",
-                            worker_id, i, id
-                        );
-
-                        // transition to `running` state
-                        let running_job = job.transition();
-                        handler.get_publisher().save(&running_job)?;
-
-                        if let Ok(_) = handler.dispatch(ptype, &payload) {
-                            // success
-                            let success_job = running_job.transition_success()?;
-                            handler.get_publisher().save(&success_job)?;
-
-                            // enqueue waiting jobs
-                        } else {
-                            // failed, requeue
-                            let reqd_job = running_job.transition_req()?;
-                            handler.get_publisher().save(&reqd_job)?;
-                            // requeued jobs get polled later ...
-                        }
-
-                        consumer.ack(delivery)?;
-                    }
+                    Ok(job) => handle_job(job, worker_id, i, &handler, &consumer, delivery)?,
                     Err(err) => {
                         println!(
                             "[Worker#{}] ({:>3}) Unknown message received [{} bytes]: {}",
@@ -313,5 +292,53 @@ where
     }
 
     println!("[Worker#{}] Ended", worker_id);
+    Ok(())
+}
+
+fn handle_job<C, H>(
+    job: Job,
+    worker_id: i32,
+    i: usize,
+    handler: &Arc<H>,
+    consumer: &amiquip::Consumer,
+    delivery: amiquip::Delivery,
+) -> Result<(), anyhow::Error>
+where
+    C: Sync + Send,
+    H: core::BgJobHandler<C> + Sync + Send,
+{
+    let id = job.id.clone();
+    let ptype = job.payload_type.clone();
+    let payload = job.payload.clone();
+    println!(
+        "[Worker#{}] ({:>3}) Message received [Id: {}]",
+        worker_id, i, id
+    );
+    let publisher = handler.get_publisher();
+    let running_job = job.transition();
+    publisher.save(&running_job)?;
+    if let Ok(_) = handler.dispatch(ptype, &payload) {
+        // success
+        let success_job = running_job.transition_success()?;
+        publisher.save(&success_job)?;
+
+        // enqueue waiting jobs
+        if let Some(next_job) = handler
+            .get_publisher()
+            .storage
+            .get_continuation_job(success_job)
+        {
+            let next_job = next_job.transition(); // Waiting -> Enqueued
+            publisher.save(&next_job)?;
+
+            publisher.handle_job_enqueue_initial(next_job)?;
+        }
+    } else {
+        // failed, requeue
+        let reqd_job = running_job.transition_req()?;
+        handler.get_publisher().save(&reqd_job)?;
+        // requeued jobs get polled later ...
+    }
+    consumer.ack(delivery)?;
     Ok(())
 }
