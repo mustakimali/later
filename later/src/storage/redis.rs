@@ -10,8 +10,8 @@ pub struct Redis {
 
 struct ScanRange {
     key: String,
-    _count: i32,
-    index: i32,
+    _count: usize,
+    index: usize,
     parent: Redis,
 }
 
@@ -51,6 +51,10 @@ impl Storage for Redis {
         }
     }
 
+    fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+        Ok(self.connection.set(key, value)?)
+    }
+
     fn push(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let item_in_range = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| -1) + 1;
@@ -68,18 +72,25 @@ impl Storage for Redis {
         }
     }
 
-    fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        Ok(self.connection.set(key, value)?)
+    fn trim(&mut self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
+        let start_key = format!("{}-start", key);
+        self.set(&start_key, &encoder::encode(range.get_index())?)?;
+
+        // ToDo: delete keys before current index
+
+        Ok(())
     }
 
     fn scan_range(mut self, key: &str) -> Box<dyn StorageIter> {
+        let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
-        let item_in_range = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| 0);
+        let start_from_idx = self.get_of_type::<usize>(&start_key).unwrap_or_else(|| 0);
+        let item_in_range = self.get_of_type::<usize>(&count_key).unwrap_or_else(|| 0);
 
         let scan = ScanRange {
             key: key.to_string(),
             _count: item_in_range,
-            index: 0,
+            index: start_from_idx,
             parent: self,
         };
 
@@ -87,7 +98,11 @@ impl Storage for Redis {
     }
 }
 
-impl StorageIter for ScanRange {}
+impl StorageIter for ScanRange {
+    fn get_index(&self) -> usize {
+        self.index
+    }
+}
 impl Iterator for ScanRange {
     type Item = Vec<u8>;
 

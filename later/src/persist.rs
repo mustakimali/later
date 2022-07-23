@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use crate::{
     encoder::{self, encode},
     id::IdOf,
-    models::Job,
+    models::{Job, Stage, StageName, WaitingStage},
     storage::Storage,
     JobId,
 };
@@ -36,5 +36,25 @@ impl Persist {
             .write()
             .map_err(|e| anyhow::anyhow!("{}", e))?
             .set(&id.to_string(), &bytes)
+    }
+
+    pub fn save_job_id(&self, id: &JobId, stage: &Stage) -> anyhow::Result<()> {
+        let key = format!("stage-{}-jobs", stage.get_name());
+        self.inner
+            .write()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .push(&key, id.to_string().as_bytes())
+    }
+
+    pub fn get_waiting_jobs(&self) -> anyhow::Result<Box<dyn crate::storage::StorageIter>> {
+        // let key = format!("stage-{}-jobs", WaitingStage::get_name());
+        // let iter = self
+        //     .inner
+        //     .write()
+        //     .map_err(|e| anyhow::anyhow!("{}", e))?
+        //     .scan_range(&key);
+
+        // Ok(iter)
+        todo!()
     }
 }

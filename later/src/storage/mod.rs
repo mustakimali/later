@@ -8,11 +8,15 @@ pub mod redis;
 pub trait Storage: Sync + Send {
     fn get(&mut self, key: &str) -> Option<Vec<u8>>;
     fn set(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+
     fn push(&mut self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    fn trim(&mut self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
     fn scan_range(self, key: &str) -> Box<dyn StorageIter>;
 }
 
-pub trait StorageIter: Iterator<Item = Vec<u8>> {}
+pub trait StorageIter: Iterator<Item = Vec<u8>> {
+    fn get_index(&self) -> usize;
+}
 
 pub struct MemoryStorage {
     _storage: HashMap<String, String>,
