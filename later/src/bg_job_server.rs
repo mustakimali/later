@@ -2,7 +2,7 @@ use crate::{
     core::{BgJobHandler, JobParameter},
     encoder,
     id::IdOf,
-    models::{Job, RequeuedStage},
+    models::{Job, RequeuedStage, Stage},
     BackgroundJobServer, JobId,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
@@ -30,14 +30,14 @@ where
             }));
         }
 
-        // allow some time for the workers to start up
-        std::thread::sleep(Duration::from_millis(250));
-
         // workers to poll jobs
         let handler_for_poller = handler.clone();
         workers.push(std::thread::spawn(move || {
             start_poller_reqd_jobs(handler_for_poller)
         }));
+
+        // allow some time for the workers to start up
+        std::thread::sleep(Duration::from_millis(250));
 
         Ok(Self {
             ctx: PhantomData,
@@ -62,11 +62,16 @@ where
         let publisher = handler.get_publisher();
         let mut iter = publisher.storage.get_reqd_jobs()?;
         while let Some(bytes) = iter.next() {
-            let job_id = dbg!(encoder::decode::<JobId>(&bytes)?);
+            let job_id = encoder::decode::<JobId>(&bytes)?;
 
             if let Some(job) = publisher.storage.get_job(job_id) {
-                let job = dbg!(job);
-                if job.stage.is_req() {
+                if let Stage::Requeued(RequeuedStage {
+                    date: _,
+                    requeue_count,
+                }) = job.stage
+                {
+                    println!("Job {}: Requeue #{}", job.id, requeue_count);
+
                     let enqueued = job.transition();
                     if let Err(_) = publisher.save(&enqueued) {
                         continue;

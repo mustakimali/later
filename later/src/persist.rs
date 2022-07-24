@@ -85,11 +85,11 @@ impl Persist {
     }
 
     pub fn save_job_id(&self, id: &JobId, stage: &Stage) -> anyhow::Result<()> {
-        let key = format!("stage-{}-jobs", stage.get_name());
+        let key = format!("stage-{}-jobs", stage.get_name()); //ToDo: IdOf
         self.inner
             .write()
             .map_err(|e| anyhow::anyhow!("{}", e))?
-            .push(&key, id.to_string().as_bytes())
+            .push(&key, &encoder::encode(&id)?)
     }
 
     pub fn get_waiting_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
@@ -101,7 +101,7 @@ impl Persist {
     }
 
     fn get_jobs_to_poll(&self, name: &str) -> Result<Box<dyn StorageIter>, anyhow::Error> {
-        let key = format!("stage-{}-jobs", name);
+        let key = format!("stage-{}-jobs", name); //ToDo: IdOf
         let iter = self
             .inner
             .write()

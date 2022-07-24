@@ -13,7 +13,7 @@ pub struct Redis {
 
 struct ScanRange {
     key: String,
-    _count: usize,
+    count: usize,
     start: usize,
     index: usize,
     parent: Redis,
@@ -23,6 +23,18 @@ impl Redis {
     pub fn new(url: &str) -> anyhow::Result<Self> {
         let client = redis::Client::open(url)?;
         let conn = client.get_connection()?;
+
+        Ok(Self {
+            _client: client,
+            connection: Arc::new(Mutex::new(conn)),
+        })
+    }
+
+    pub fn new_cleared(url: &str) -> anyhow::Result<Self> {
+        let client = redis::Client::open(url)?;
+        let mut conn = client.get_connection()?;
+
+        redis::cmd("FLUSHDB").query(&mut conn)?;
 
         Ok(Self {
             _client: client,
@@ -77,14 +89,14 @@ impl Storage for Redis {
 
     fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
-        let item_in_range = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| -1) + 1;
+        let count = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| 0);
 
-        let key = format!("{}-{}", key, item_in_range);
+        let key = format!("{}-{}", key, count);
 
         match self.set(&key, value) {
             Ok(_) => {
                 // store the count
-                self.set(&count_key, &encoder::encode(&item_in_range)?)?;
+                self.set(&count_key, &encoder::encode(&count + 1)?)?;
 
                 Ok(())
             }
@@ -95,7 +107,13 @@ impl Storage for Redis {
     fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
         let key = range.get_key();
         let start_key = format!("{}-start", key);
-        self.set(&start_key, &encoder::encode(range.get_index())?)?;
+        let idx = range.get_index();
+
+        if idx == range.get_start() {
+            return Ok(());
+        }
+
+        self.set(&start_key, &encoder::encode(idx)?)?;
 
         let start = range.get_start();
         let end = range.get_index();
@@ -115,7 +133,7 @@ impl Storage for Redis {
 
         let scan = ScanRange {
             key: key.to_string(),
-            _count: item_in_range,
+            count: item_in_range,
             start: start_from_idx,
             index: start_from_idx,
             parent: self.clone(),
@@ -142,11 +160,19 @@ impl Iterator for ScanRange {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.count == 0 {
+            return None;
+        }
+
         let key = get_scan_item_key(&self.key, self.index);
 
-        self.index += 1;
+        let item = self.parent.get(&key);
 
-        self.parent.get(&key)
+        if item.is_some() {
+            self.index += 1;
+        }
+
+        item
     }
 }
 
@@ -156,7 +182,6 @@ fn get_scan_item_key(range_key: &str, idx: usize) -> String {
 
 #[cfg(test)]
 mod test {
-    
 
     use uuid::Uuid;
 
@@ -166,7 +191,7 @@ mod test {
     fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
         storage.set("key", my_data).unwrap();
 
         let result = storage.get("key").unwrap();
@@ -177,7 +202,7 @@ mod test {
     fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
 
         for _ in 0..10 {
             storage
@@ -195,7 +220,7 @@ mod test {
     fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
 
         for idx in 0..100 {
             storage.push(&key, idx.to_string().as_bytes()).unwrap();
@@ -227,5 +252,4 @@ mod test {
 
         assert_eq!(0, storage.scan_range(&key).count()); // should be empty
     }
-
 }
