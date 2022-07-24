@@ -120,7 +120,7 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    BackgroundJobServer::start(handler)
+                    ::later::BackgroundJobServer::start(handler)
                 }
             }
 
