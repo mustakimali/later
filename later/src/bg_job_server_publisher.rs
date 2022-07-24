@@ -22,7 +22,7 @@ impl BackgroundJobServerPublisher {
         Ok(Self {
             _amqp_address: amqp_address,
             _connection: connection,
-            storage: Persist::new(storage),
+            storage: Persist::new(storage, routing_key.clone()),
 
             channel: Mutex::new(channel),
             routing_key: routing_key,

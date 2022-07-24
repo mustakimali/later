@@ -8,14 +8,18 @@ impl Id {
 
 pub(crate) enum IdOf {
     SavedJob(JobId),
-    ContinuationOf(JobId)
+    ContinuationOf(JobId),
+    JobsInStagesId(String /* Stage name */),
 }
 
 impl IdOf {
-    pub fn get_id(&self) -> Id {
-        match self {
-            IdOf::SavedJob(id) => Id(format!("job-{}", id)),
-            IdOf::ContinuationOf(id) => Id(format!("job-{}-next", id)),
-        }
+    pub fn get_id(&self, prefix: &str) -> Id {
+        let id_str = match self {
+            IdOf::SavedJob(id) => format!("job-{}", id),
+            IdOf::ContinuationOf(id) => format!("job-{}-next", id),
+            IdOf::JobsInStagesId(stage) => format!("stage-{}-jobs", stage),
+        };
+
+        Id(format!("{}-{}", prefix, id_str))
     }
 }
