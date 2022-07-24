@@ -18,7 +18,13 @@ later::background_job! {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum TestCommand {
+pub struct TestCommand {
+    name: String,
+    outcome: Outcome,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Outcome {
     Success,
     Retry(usize),
 }
@@ -32,7 +38,7 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
             .unwrap()
             .iter()
             .filter(|cmd| {
-                if let TestCommand::Retry(_) = cmd {
+                if let Outcome::Retry(_) = cmd.outcome {
                     true
                 } else {
                     false
@@ -41,9 +47,9 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
             .count()
     };
 
-    match payload {
-        TestCommand::Success => Ok(()),
-        TestCommand::Retry(c) => match retry_count >= c {
+    match payload.outcome {
+        Outcome::Success => Ok(()),
+        Outcome::Retry(c) => match retry_count >= c {
             true => Ok(()),
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
@@ -54,16 +60,39 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
 fn integration_basic() {
     let job_server = create();
     job_server
-        .enqueue(TestCommand::Success)
+        .enqueue(TestCommand {
+            name: "basic".to_string(),
+            outcome: Outcome::Success,
+        })
         .expect("Enqueue job");
 
     sleep_ms(250);
 
-    assert_eq!(1, count());
+    assert_eq!(1, count("basic"));
 }
 
-fn count() -> usize {
-    COMMANDS.lock().unwrap().iter().count()
+#[test]
+fn integration_retry() {
+    let job_server = create();
+    job_server
+        .enqueue(TestCommand {
+            name: "retry".to_string(),
+            outcome: Outcome::Retry(3),
+        })
+        .expect("Enqueue job");
+
+    sleep_ms(2000);
+
+    assert_eq!(3, count("retry"));
+}
+
+fn count(ty: &str) -> usize {
+    COMMANDS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|c| c.name == ty)
+        .count()
 }
 
 fn sleep_ms(ms: usize) {

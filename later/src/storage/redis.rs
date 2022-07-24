@@ -191,7 +191,7 @@ mod test {
     fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
         storage.set("key", my_data).unwrap();
 
         let result = storage.get("key").unwrap();
@@ -202,7 +202,7 @@ mod test {
     fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
 
         for _ in 0..10 {
             storage
@@ -220,7 +220,7 @@ mod test {
     fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new_cleared("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
 
         for idx in 0..100 {
             storage.push(&key, idx.to_string().as_bytes()).unwrap();
