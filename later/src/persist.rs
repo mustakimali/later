@@ -5,8 +5,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::{
     encoder::{self},
     id::{Id, IdOf},
-    models::{Job, Stage, StageName, WaitingStage},
-    storage::Storage,
+    models::{Job, Stage, StageName, WaitingStage, RequeuedStage},
+    storage::{Storage, StorageIter},
     JobId,
 };
 
@@ -84,14 +84,21 @@ impl Persist {
             .push(&key, id.to_string().as_bytes())
     }
 
-    pub fn get_waiting_jobs(&self) -> anyhow::Result<Box<dyn crate::storage::StorageIter>> {
-        let key = format!("stage-{}-jobs", WaitingStage::get_name());
+    pub fn get_waiting_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
+        self.get_jobs_to_poll(&WaitingStage::get_name())
+    }
+
+    pub fn get_reqd_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
+        self.get_jobs_to_poll(&RequeuedStage::get_name())
+    }
+
+    fn get_jobs_to_poll(&self, name: &str) -> Result<Box<dyn StorageIter>, anyhow::Error> {
+        let key = format!("stage-{}-jobs", name);
         let iter = self
             .inner
             .write()
             .map_err(|e| anyhow::anyhow!("{}", e))?
             .scan_range(&key);
-
         Ok(iter)
     }
 }

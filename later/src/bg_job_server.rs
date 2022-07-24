@@ -1,7 +1,7 @@
 use crate::{
     core::{BgJobHandler, JobParameter},
     encoder,
-    models::Job,
+    models::{Job, RequeuedStage},
     BackgroundJobServer, JobId,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
@@ -16,15 +16,16 @@ where
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
+        let num_bg_workers = 5;
 
         // workers to process jobs (distributed)
-        for id in 1..5 {
+        for id in 1..num_bg_workers {
             let amqp_address = publisher._amqp_address.clone();
             let routing_key = publisher.routing_key.clone();
             let handler = handler.clone();
 
             workers.push(std::thread::spawn(move || {
-                start_worker(handler, id, &amqp_address, &routing_key)
+                start_distributed_job_worker(handler, id, &amqp_address, &routing_key)
             }));
         }
 
@@ -45,7 +46,24 @@ where
     }
 }
 
-fn start_worker<C, H>(
+fn start_poller_reqd_jobs<C, H>(handler: Arc<H>) -> anyhow::Result<()>
+where
+    C: Sync + Send,
+    H: BgJobHandler<C> + Sync + Send + 'static,
+{
+    let publisher = handler.get_publisher();
+    let iter = publisher.storage.get_reqd_jobs()?;
+    for bytes in iter {
+        let job = encoder::decode::<Job>(&bytes)?;
+        if job.stage.is_req() {
+
+        }
+    }
+
+    Ok(())
+}
+
+fn start_distributed_job_worker<C, H>(
     handler: Arc<H>,
     worker_id: i32,
     amqp_address: &str,
