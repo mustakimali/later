@@ -1038,12 +1038,14 @@ dependencies = [
  "anyhow",
  "chrono",
  "later-derive",
+ "lazy_static",
  "redis",
  "rmp-serde",
  "serde",
  "serde_derive",
  "sqlx",
  "tokio",
+ "tracing",
  "uuid 1.1.2",
 ]
 

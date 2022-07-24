@@ -27,12 +27,12 @@ fn handle_another_sample_message(
     let id = _ctx.enqueue(SampleMessage {
         txt: "test".to_string(),
     })?;
-    _ctx.enqueue_continue(
-        id.clone(),
-        SampleMessage {
-            txt: format!("Continuation of job {}", id),
-        },
-    )?;
+    // _ctx.enqueue_continue(
+    //     id.clone(),
+    //     SampleMessage {
+    //         txt: format!("Continuation of job {}", id),
+    //     },
+    // )?;
 
     println!(
         "On Handle handle_another_sample_message: {:?}, enqueued: {}",

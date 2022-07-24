@@ -26,6 +26,15 @@ impl Persist {
         self.get_of_type::<Job>(id)
     }
 
+    pub fn expire(&self, job_id: JobId) -> anyhow::Result<()> {
+        let id = IdOf::SavedJob(job_id).get_id();
+        Ok(self
+            .inner
+            .write()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .del(&id.to_string())?)
+    }
+
     pub fn get_of_type<T>(&self, id: Id) -> Option<T>
     where
         T: DeserializeOwned,
