@@ -1,4 +1,3 @@
-use later::BackgroundJobServer;
 use serde::{Deserialize, Serialize};
 
 later::background_job! {
