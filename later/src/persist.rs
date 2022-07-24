@@ -35,6 +35,14 @@ impl Persist {
             .del(&id.to_string())?)
     }
 
+    pub fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
+        Ok(self
+            .inner
+            .write()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+        .trim(&range)?)
+    }
+
     pub fn get_of_type<T>(&self, id: Id) -> Option<T>
     where
         T: DeserializeOwned,

@@ -1,6 +1,7 @@
 use crate::{
     core::{BgJobHandler, JobParameter},
     encoder,
+    id::IdOf,
     models::{Job, RequeuedStage},
     BackgroundJobServer, JobId,
 };
@@ -33,6 +34,10 @@ where
         std::thread::sleep(Duration::from_millis(250));
 
         // workers to poll jobs
+        let handler_for_poller = handler.clone();
+        workers.push(std::thread::spawn(move || {
+            start_poller_reqd_jobs(handler_for_poller)
+        }));
 
         Ok(Self {
             ctx: PhantomData,
@@ -51,16 +56,33 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    let publisher = handler.get_publisher();
-    let iter = publisher.storage.get_reqd_jobs()?;
-    for bytes in iter {
-        let job = encoder::decode::<Job>(&bytes)?;
-        if job.stage.is_req() {
+    loop {
+        println!("Polling reqd jobs");
 
+        let publisher = handler.get_publisher();
+        let mut iter = publisher.storage.get_reqd_jobs()?;
+        while let Some(bytes) = iter.next() {
+            let job_id = dbg!(encoder::decode::<JobId>(&bytes)?);
+
+            if let Some(job) = publisher.storage.get_job(job_id) {
+                let job = dbg!(job);
+                if job.stage.is_req() {
+                    let enqueued = job.transition();
+                    if let Err(_) = publisher.save(&enqueued) {
+                        continue;
+                    }
+
+                    if let Err(_) = publisher.handle_job_enqueue_initial(enqueued) {
+                        continue;
+                    }
+                }
+            }
         }
-    }
 
-    Ok(())
+        publisher.storage.trim(iter)?;
+
+        std::thread::sleep(Duration::from_secs(1));
+    }
 }
 
 fn start_distributed_job_worker<C, H>(

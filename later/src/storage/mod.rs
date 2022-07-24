@@ -11,11 +11,12 @@ pub trait Storage: Sync + Send {
     fn del(&self, key: &str) -> anyhow::Result<()>;
 
     fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    fn trim(&self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
+    fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;
     fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
 }
 
 pub trait StorageIter: Iterator<Item = Vec<u8>> {
+    fn get_key(&self) -> String;
     fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
 }

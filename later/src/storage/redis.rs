@@ -92,14 +92,15 @@ impl Storage for Redis {
         }
     }
 
-    fn trim(&self, key: &str, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
+    fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
+        let key = range.get_key();
         let start_key = format!("{}-start", key);
         self.set(&start_key, &encoder::encode(range.get_index())?)?;
 
         let start = range.get_start();
         let end = range.get_index();
         for i in start..end {
-            let key = get_scan_item_key(key, i);
+            let key = get_scan_item_key(&key, i);
             let _ = self.del(&key);
         }
 
@@ -131,6 +132,10 @@ impl StorageIter for ScanRange {
 
     fn get_start(&self) -> usize {
         self.start
+    }
+
+    fn get_key(&self) -> String {
+        self.key.clone()
     }
 }
 impl Iterator for ScanRange {
@@ -209,7 +214,7 @@ mod test {
         }
 
         // trim
-        let _ = storage.trim(&key, range);
+        let _ = storage.trim(&range);
 
         // should have only 50
         let range = storage.scan_range(&key);
@@ -218,8 +223,9 @@ mod test {
         // should be empty
         let mut range = storage.scan_range(&key);
         while range.next().is_some() {}
-        let _ = storage.trim(&key, range);
+        let _ = storage.trim(&range);
 
         assert_eq!(0, storage.scan_range(&key).count()); // should be empty
     }
+
 }

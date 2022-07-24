@@ -66,7 +66,7 @@ async fn integration_retry() {
         .enqueue(TestCommand::Retry(3))
         .expect("Enqueue job");
 
-    sleep_ms(250).await;
+    sleep_ms(5000).await;
 
     assert_eq!(3, COMMANDS.lock().unwrap().iter().count());
 }
