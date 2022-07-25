@@ -72,7 +72,7 @@ impl ToTokens for TraitImpl {
 
             impl<C> std::ops::Deref for #context_name<C> {
                 type Target = ::later::BackgroundJobServerPublisher;
-        
+
                 fn deref(&self) -> &Self::Target {
                     &self.job
                 }

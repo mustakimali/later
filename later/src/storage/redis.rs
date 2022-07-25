@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{Storage, StorageIter};
 use crate::encoder;
-use redis::{aio::Connection, AsyncCommands, Client, Commands};
+use redis::{aio::Connection, AsyncCommands, Client};
 use serde::de::DeserializeOwned;
 
 #[derive(Clone)]
@@ -80,7 +80,10 @@ impl Storage for Redis {
 
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
-        let count = self.get_of_type::<i32>(&count_key).await.unwrap_or_else(|| 0);
+        let count = self
+            .get_of_type::<i32>(&count_key)
+            .await
+            .unwrap_or_else(|| 0);
 
         let key = format!("{}-{}", key, count);
 
@@ -119,8 +122,14 @@ impl Storage for Redis {
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
         let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
-        let start_from_idx = self.get_of_type::<usize>(&start_key).await.unwrap_or_else(|| 0);
-        let item_in_range = self.get_of_type::<usize>(&count_key).await.unwrap_or_else(|| 0);
+        let start_from_idx = self
+            .get_of_type::<usize>(&start_key)
+            .await
+            .unwrap_or_else(|| 0);
+        let item_in_range = self
+            .get_of_type::<usize>(&count_key)
+            .await
+            .unwrap_or_else(|| 0);
 
         let scan = ScanRange {
             key: key.to_string(),
@@ -189,7 +198,9 @@ mod test {
     async fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/")
+            .await
+            .expect("connect to redis");
         storage.set("key", my_data).await.unwrap();
 
         let result = storage.get("key").await.unwrap();
@@ -200,7 +211,9 @@ mod test {
     async fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/")
+            .await
+            .expect("connect to redis");
 
         for _ in 0..10 {
             storage
@@ -219,7 +232,9 @@ mod test {
     async fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/")
+            .await
+            .expect("connect to redis");
 
         for idx in 0..100 {
             storage

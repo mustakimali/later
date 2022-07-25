@@ -74,9 +74,7 @@ async fn integration_basic() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(250).await;
-
-    assert_eq!(1, count("basic"));
+    assert_invocations(1, "basic").await;
 }
 
 #[tokio::test]
@@ -90,9 +88,7 @@ async fn integration_retry() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(2000).await;
-
-    assert_eq!(3, count("retry"));
+    assert_invocations(3, "retry").await;
 }
 
 #[tokio::test]
@@ -128,14 +124,12 @@ async fn integration_continuation() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(2000).await;
-
-    assert_eq!(1, count("continuation-1"));
-    assert_eq!(1, count("continuation-2"));
-    assert_eq!(1, count("continuation-3"));
+    assert_invocations(1, "continuation-1").await;
+    assert_invocations(1, "continuation-2").await;
+    assert_invocations(1, "continuation-3").await;
 }
 
-fn count(ty: &str) -> usize {
+fn count_of_invocation(ty: &str) -> usize {
     COMMANDS
         .lock()
         .unwrap()
@@ -144,13 +138,11 @@ fn count(ty: &str) -> usize {
         .count()
 }
 
-async fn sleep_ms(ms: usize) {
-    tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
-}
-
 async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext {};
-    let storage = Redis::new_cleared("redis://127.0.0.1").await.expect("connect to redis");
+    let storage = Redis::new_cleared("redis://127.0.0.1")
+        .await
+        .expect("connect to redis");
     let id = format!(
         "later-test-{}-{}",
         SystemTime::now()
@@ -169,4 +161,15 @@ async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     .with_test_command_handler(handle_command)
     .build()
     .expect("start bg server")
+}
+
+async fn assert_invocations(expected_num: usize, ty: &str) {
+    while count_of_invocation(ty) != expected_num {
+        sleep_ms(250).await;
+    }
+    assert_eq!(expected_num, count_of_invocation(ty));
+}
+
+async fn sleep_ms(ms: usize) {
+    tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
 }

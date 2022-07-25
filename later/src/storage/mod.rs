@@ -17,11 +17,11 @@ pub trait Storage: Sync + Send {
 }
 
 #[async_trait::async_trait]
-pub trait StorageIter : Sync + Send {
+pub trait StorageIter: Sync + Send {
     fn get_key(&self) -> String;
     fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
-    
+
     async fn next(&mut self) -> Option<Vec<u8>>;
     async fn count(&mut self) -> usize;
 }

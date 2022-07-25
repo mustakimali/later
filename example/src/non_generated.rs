@@ -6,8 +6,7 @@ struct AppContext {
 
 impl AppContext {
     pub async fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        self.jobs
-            .enqueue(msg).await
+        self.jobs.enqueue(msg).await
     }
 }
 
@@ -34,7 +33,9 @@ fn handle_another_sample_message(
 
 pub async fn test_non_generated() {
     let job_ctx = JobContext {};
-    let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
+    let storage = Redis::new("redis://127.0.0.1/")
+        .await
+        .expect("connect to redis");
     let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
