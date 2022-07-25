@@ -1,29 +1,28 @@
 [package]
 name = "later"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
-description = "Background jobs manager and runner for Rust"
+description = "Distributed Background jobs manager and runner for Rust"
 license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-all = ["postgres"]
+all = ["postgres", "redis"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis"]
 
 [dependencies]
 # internal
-later-derive = { path = "../later-derive", version = "0.0.1"}
+later-derive = { path = "../later-derive", version = "0.0.2"}
 
 # external
 anyhow = "1.0.58"
 uuid = { version = "1.1.2", features = ["v4"] }
 amiquip = { version = "0.4", default-features = false }
-tokio = "1.19.2"
+tokio = { version = "1.19.2", features = ["full"]}
 serde = "1.0"
 serde_derive = "1.0"
-#serde_json = "1.0"
 rmp-serde = "1.1"
 chrono = { version = "0.4", features = ["serde"]}
 tracing = "0.1"

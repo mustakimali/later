@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "later"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "amiquip",
  "anyhow",
@@ -1076,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "later-derive"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -2294,6 +2294,7 @@ dependencies = [
  "mio 0.8.4",
  "num_cpus",
  "once_cell",
+ "parking_lot 0.12.1",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",

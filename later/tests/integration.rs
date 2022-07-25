@@ -1,6 +1,6 @@
 use std::{sync::Mutex, time::SystemTime};
 
-use later::{storage::redis::Redis, BackgroundJobServer};
+use later::BackgroundJobServer;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +67,7 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
     }
 }
 
+#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_basic() {
     let job_server = create().await;
@@ -81,6 +82,7 @@ async fn integration_basic() {
     assert_invocations(1, "basic").await;
 }
 
+#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_retry() {
     let job_server = create().await;
@@ -95,6 +97,7 @@ async fn integration_retry() {
     assert_invocations(3, "retry").await;
 }
 
+#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_continuation() {
     let job_server = create().await;
@@ -144,9 +147,10 @@ fn count_of_invocation(ty: &str) -> usize {
         .count()
 }
 
+#[cfg(feature = "postgres")]
 async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext {};
-    let storage = Redis::new_cleared("redis://127.0.0.1")
+    let storage = later::storage::redis::Redis::new_cleared("redis://127.0.0.1")
         .await
         .expect("connect to redis");
     let id = format!(

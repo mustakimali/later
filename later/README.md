@@ -1,14 +1,13 @@
 # later
 
-A background job manager and runner for Rust.
-
+A distributed background job manager and runner for Rust. This is currently in PoC stage.
 
 ## How to enqueue Fire and Forget jobs
 
 ### 1. Import `later` and required dependencies
 
 ```toml
-later = { version = "0.0.1" }
+later = "0.0.3"
 serde = "1.0"
 
 ```
@@ -42,6 +41,10 @@ later::background_job! {
 }
 ```
 
+This generates two types
+* `JobsBuilder` - used to bootstrap the background job server - which can be used to enqueue jobs,
+* `JobContext<T>` - used to pass application context (`T`) in the handler as well as enqueue jobs,
+
 ### 4. Use the generated code to bootstrap the background job server
 
 For `struct Jobs` a type `JobsBuilder` will be generated. Use this to bootstrap the server.
@@ -49,10 +52,13 @@ For `struct Jobs` a type `JobsBuilder` will be generated. Use this to bootstrap 
 ```rs
 // bootstrap the server
 let job_ctx = JobContext {};
-    let ctx = MyContext{ /*..*/ };                  // Any context to pass onto the handles
-    let bg_jobs = DeriveHandlerBuilder::new(
+let ctx = MyContext{ /*..*/ };                  // Any context to pass onto the handlers
+let storage = Redis::new("redis://127.0.0.1/")  // More storage option to be available later
+    .await
+    .expect("connect to redis");
+let bg_jobs = JobsBuilder::new(
         ctx,                                        // Pass the context here
-        "fnf-example".into(),                       // Unique name for this app
+        "later-example".into(),                     // Unique name for this app
         "amqp://guest:guest@localhost:5672".into(), // RabbitMq instance
     )
     // for each payload defined in the `struct Jobs` above
@@ -62,11 +68,11 @@ let job_ctx = JobContext {};
     .build()
     .expect("start BG Jobs server");
 
-    // use bg_jobs.enqueue(SendEmail{ ... }) to enqueue jobs,
-    // this will only accept types defined inside the macro above
+// use bg_jobs.enqueue(SendEmail{ ... }) to enqueue jobs,
+// or bg_jobs.enqueue_continue(parent_job_id, SendEmail{ ... }) to chain jobs.
+// this will only accept types defined inside the macro above
 
 // define handler
-
 fn handle_send_email(
         ctx: &JobContext<MyContext>, // JobContext is generated wrapper
         payload: SendEmail,
@@ -74,7 +80,8 @@ fn handle_send_email(
         // handle `payload`
 
         // ctx.app -> Access the MyContext passed during bootstrapping
-        // ctx.enqueue(_) or ctx.jobs.enqueue(_) to enqueue more jobs
+        // ctx.enqueue(_) to enqueue more jobs
+        // ctx.enqueue_continue(_) to chain jobs
 
         Ok(()) // or Err(_) to retry this message
     }
@@ -87,8 +94,8 @@ This is PoC at this moment. I aim to make something like [Hangfire for .NET](htt
 Upcoming features are
 
 - [ ] Multiple storage backend (redis, postgres)
-- [ ] Continuation
-- [ ] Delayed Jobs
+- [x] Continuation
+- [ ] Delayed Jobs (WIP)
 - [ ] Recurring jobs
 - [ ] Dashboard
 - [ ] Use storage backend for scheduling (to remove dependency to RabbitMQ)
