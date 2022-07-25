@@ -46,7 +46,7 @@ where
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
-    channel: Mutex<Channel>,
+    channel: Arc<Mutex<Channel>>,
     routing_key: String,
     storage: Persist,
     _connection: Connection,

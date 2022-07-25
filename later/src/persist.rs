@@ -68,6 +68,7 @@ impl Persist {
 
     pub async fn get_continuation_job(&self, job: Job) -> Option<Job> {
         let id = IdOf::ContinuationOf(job.id).get_id(&self.key_prefix);
+        // ToDo: more than one job be in scheduled
         match self.get_of_type::<JobId>(id).await {
             Some(next_job_id) => self.get_job(next_job_id).await,
             None => None,

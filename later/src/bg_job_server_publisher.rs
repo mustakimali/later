@@ -6,7 +6,7 @@ use crate::storage::Storage;
 use crate::{encoder, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use amiquip::{Connection, Exchange, Publish};
 use anyhow::Context;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 impl BackgroundJobServerPublisher {
@@ -24,7 +24,7 @@ impl BackgroundJobServerPublisher {
             _connection: connection,
             storage: Persist::new(storage, routing_key.clone()),
 
-            channel: Mutex::new(channel),
+            channel: Arc::new(Mutex::new(channel)),
             routing_key: routing_key,
         })
     }
@@ -105,12 +105,6 @@ impl BackgroundJobServerPublisher {
         // save the job
         self.save(&job).await?;
 
-        if let Stage::Delayed(_) = job.stage {
-            // continuation
-            // - enqueue if parent is already complete
-            // - schedule self message to check an enqueue later (to prevent race)
-        }
-
         self.handle_job_enqueue_initial(job).await?;
 
         Ok(JobId(id))
@@ -156,6 +150,11 @@ impl BackgroundJobServerPublisher {
                     if !parent_job.stage.is_success() {
                         return Ok(());
                     }
+
+                    println!(
+                        "Parent job {} is already completed, enqueuing this job immediately",
+                        parent_job.id
+                    );
                 }
 
                 // parent job is success or not found (means successful long time ago)

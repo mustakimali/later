@@ -71,7 +71,7 @@ where
         .build()?;
 
     loop {
-        println!("Polling reqd jobs");
+        tracing::debug!("Polling reqd jobs");
 
         let publisher = handler.get_publisher();
         let mut iter = rt.block_on(publisher.storage.get_reqd_jobs())?;
@@ -189,6 +189,7 @@ where
         Ok(_) => {
             // success
             let success_job = running_job.transition_success()?;
+            let success_job_id = success_job.id.clone();
             rt.block_on(publisher.save(&success_job))?;
 
             rt.block_on(publisher.expire(&success_job, Duration::from_secs(3600)))?;
@@ -200,6 +201,8 @@ where
                     .storage
                     .get_continuation_job(success_job),
             ) {
+                println!("Continuing {} -> {}", success_job_id, next_job.id);
+
                 let next_job = next_job.transition(); // Waiting -> Enqueued
                 rt.block_on(publisher.save(&next_job))?;
 

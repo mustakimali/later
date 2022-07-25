@@ -57,7 +57,11 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
         Outcome::Delay(delay_ms) => {
-            sleep_ms(delay_ms);
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+
+            rt.block_on(sleep_ms(delay_ms));
             Ok(())
         }
     }
@@ -107,7 +111,7 @@ async fn integration_continuation() {
             parent_job_id,
             TestCommand {
                 name: "continuation-2".to_string(),
-                outcome: Outcome::Delay(250),
+                outcome: Outcome::Retry(3),
             },
         )
         .await
@@ -124,9 +128,11 @@ async fn integration_continuation() {
         .await
         .expect("Enqueue job");
 
-    assert_invocations(1, "continuation-1").await;
-    assert_invocations(1, "continuation-2").await;
+    println!("--- All job scheduled ---");
+
     assert_invocations(1, "continuation-3").await;
+    assert_invocations(3, "continuation-2").await;
+    assert_invocations(1, "continuation-1").await;
 }
 
 fn count_of_invocation(ty: &str) -> usize {
@@ -164,10 +170,17 @@ async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
 }
 
 async fn assert_invocations(expected_num: usize, ty: &str) {
-    while count_of_invocation(ty) != expected_num {
+    let start = SystemTime::now();
+    while SystemTime::now().duration_since(start).unwrap().as_millis() < 3000
+        && count_of_invocation(ty) != expected_num
+    {
         sleep_ms(250).await;
     }
-    assert_eq!(expected_num, count_of_invocation(ty));
+
+    let invocations = count_of_invocation(ty);
+    assert_eq!(expected_num, invocations);
+
+    println!("Invocations: {} x {} ... Check", ty, invocations);
 }
 
 async fn sleep_ms(ms: usize) {
