@@ -27,6 +27,9 @@ serde_derive = "1.0"
 rmp-serde = "1.1"
 chrono = { version = "0.4", features = ["serde"]}
 tracing = "0.1"
+async-trait = "0.1.56"
+futures-core = "0.3.21"
+async-recursion = "1.0"
 
 sqlx = { optional = true, version = "0.5", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }

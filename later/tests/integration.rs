@@ -63,14 +63,15 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
     }
 }
 
-#[test]
-fn integration_basic() {
+#[tokio::test]
+async fn integration_basic() {
     let job_server = create();
     job_server
         .enqueue(TestCommand {
             name: "basic".to_string(),
             outcome: Outcome::Success,
         })
+        .await
         .expect("Enqueue job");
 
     sleep_ms(250);
@@ -78,14 +79,15 @@ fn integration_basic() {
     assert_eq!(1, count("basic"));
 }
 
-#[test]
-fn integration_retry() {
+#[tokio::test]
+async fn integration_retry() {
     let job_server = create();
     job_server
         .enqueue(TestCommand {
             name: "retry".to_string(),
             outcome: Outcome::Retry(3),
         })
+        .await
         .expect("Enqueue job");
 
     sleep_ms(2000);
@@ -93,14 +95,15 @@ fn integration_retry() {
     assert_eq!(3, count("retry"));
 }
 
-#[test]
-fn integration_continuation() {
+#[tokio::test]
+async fn integration_continuation() {
     let job_server = create();
     let parent_job_id = job_server
         .enqueue(TestCommand {
             name: "continuation-1".to_string(),
             outcome: Outcome::Delay(250),
         })
+        .await
         .expect("Enqueue job");
 
     let child_job_1 = job_server
@@ -111,6 +114,7 @@ fn integration_continuation() {
                 outcome: Outcome::Delay(250),
             },
         )
+        .await
         .expect("Enqueue job");
 
     let _ = job_server
@@ -121,6 +125,7 @@ fn integration_continuation() {
                 outcome: Outcome::Success,
             },
         )
+        .await
         .expect("Enqueue job");
 
     sleep_ms(2000);

@@ -61,8 +61,9 @@ impl Redis {
     }
 }
 
+#[async_trait::async_trait]
 impl Storage for Redis {
-    fn get(&self, key: &str) -> Option<Vec<u8>> {
+    async fn get(&self, key: &str) -> Option<Vec<u8>> {
         match self
             .get_connection()
             .ok()
@@ -79,24 +80,24 @@ impl Storage for Redis {
         }
     }
 
-    fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         Ok(self.get_connection()?.set(key, value)?)
     }
 
-    fn del(&self, key: &str) -> anyhow::Result<()> {
+    async fn del(&self, key: &str) -> anyhow::Result<()> {
         Ok(self.get_connection()?.del(key)?)
     }
 
-    fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let count = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| 0);
 
         let key = format!("{}-{}", key, count);
 
-        match self.set(&key, value) {
+        match self.set(&key, value).await {
             Ok(_) => {
                 // store the count
-                self.set(&count_key, &encoder::encode(&count + 1)?)?;
+                self.set(&count_key, &encoder::encode(&count + 1)?).await?;
 
                 Ok(())
             }
@@ -104,7 +105,7 @@ impl Storage for Redis {
         }
     }
 
-    fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
+    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
         let key = range.get_key();
         let start_key = format!("{}-start", key);
         let idx = range.get_index();
@@ -113,7 +114,7 @@ impl Storage for Redis {
             return Ok(());
         }
 
-        self.set(&start_key, &encoder::encode(idx)?)?;
+        self.set(&start_key, &encoder::encode(idx)?).await?;
 
         let start = range.get_start();
         let end = range.get_index();
@@ -125,7 +126,7 @@ impl Storage for Redis {
         Ok(())
     }
 
-    fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
+    async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
         let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
         let start_from_idx = self.get_of_type::<usize>(&start_key).unwrap_or_else(|| 0);
@@ -143,6 +144,7 @@ impl Storage for Redis {
     }
 }
 
+#[async_trait::async_trait]
 impl StorageIter for ScanRange {
     fn get_index(&self) -> usize {
         self.index
@@ -155,24 +157,30 @@ impl StorageIter for ScanRange {
     fn get_key(&self) -> String {
         self.key.clone()
     }
-}
-impl Iterator for ScanRange {
-    type Item = Vec<u8>;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    async fn next(&mut self) -> Option<Vec<u8>> {
         if self.count == 0 {
             return None;
         }
 
         let key = get_scan_item_key(&self.key, self.index);
 
-        let item = self.parent.get(&key);
+        let item = self.parent.get(&key).await;
 
         if item.is_some() {
             self.index += 1;
         }
 
         item
+    }
+
+    async fn count(&mut self) -> usize {
+        let mut count = 0;
+        while self.next().await.is_some() {
+            count += 1;
+        }
+
+        count
     }
 }
 
@@ -187,19 +195,19 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn basic() {
+    #[tokio::test]
+    async fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
         let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
-        storage.set("key", my_data).unwrap();
+        storage.set("key", my_data).await.unwrap();
 
-        let result = storage.get("key").unwrap();
+        let result = storage.get("key").await.unwrap();
         assert_eq!(my_data, result);
     }
 
-    #[test]
-    fn range_basic() {
+    #[tokio::test]
+    async fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
         let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
@@ -207,49 +215,53 @@ mod test {
         for _ in 0..10 {
             storage
                 .push(&key, uuid::Uuid::new_v4().to_string().as_bytes())
+                .await
                 .unwrap();
         }
 
-        let scan_result = storage.scan_range(&key);
-        let count = scan_result.count();
+        let mut scan_result = storage.scan_range(&key).await;
+        let count = scan_result.count().await;
 
         assert_eq!(10, count);
     }
 
-    #[test]
-    fn range_trim() {
+    #[tokio::test]
+    async fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
         let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
 
         for idx in 0..100 {
-            storage.push(&key, idx.to_string().as_bytes()).unwrap();
+            storage
+                .push(&key, idx.to_string().as_bytes())
+                .await
+                .unwrap();
         }
 
-        assert_eq!(100, storage.scan_range(&key).count());
+        assert_eq!(100, storage.scan_range(&key).await.count().await);
 
         // scan first 50
-        let mut range = storage.scan_range(&key);
+        let mut range = storage.scan_range(&key).await;
         let mut counter = 0;
         while counter < 50 {
-            let next_item = range.next();
+            let next_item = range.next().await;
             assert!(next_item.is_some());
 
             counter += 1;
         }
 
         // trim
-        let _ = storage.trim(&range);
+        let _ = storage.trim(&range).await;
 
         // should have only 50
-        let range = storage.scan_range(&key);
-        assert_eq!(50, range.count());
+        let mut range = storage.scan_range(&key).await;
+        assert_eq!(50, range.count().await);
 
         // should be empty
-        let mut range = storage.scan_range(&key);
-        while range.next().is_some() {}
+        let mut range = storage.scan_range(&key).await;
+        while range.next().await.is_some() {}
         let _ = storage.trim(&range);
 
-        assert_eq!(0, storage.scan_range(&key).count()); // should be empty
+        assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
     }
 }

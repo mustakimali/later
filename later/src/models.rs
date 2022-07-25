@@ -150,6 +150,7 @@ impl Job {
         }))
     }
 
+    #[allow(dead_code)]
     pub fn transition_failed(self, reason: String) -> anyhow::Result<Job> {
         self.transition_to_terminal_stage(Stage::Failed(FailedStage {
             date: chrono::Utc::now(),

@@ -5,11 +5,9 @@ struct AppContext {
 }
 
 impl AppContext {
-    pub fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
+    pub async fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
         self.jobs
-            //.lock()
-            //.map_err(|e| anyhow::anyhow!(e.to_string()))?
-            .enqueue(msg)
+            .enqueue(msg).await
     }
 }
 

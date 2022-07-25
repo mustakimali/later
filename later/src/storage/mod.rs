@@ -5,20 +5,25 @@ pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
 
+#[async_trait::async_trait]
 pub trait Storage: Sync + Send {
-    fn get(&self, key: &str) -> Option<Vec<u8>>;
-    fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    fn del(&self, key: &str) -> anyhow::Result<()>;
+    async fn get(&self, key: &str) -> Option<Vec<u8>>;
+    async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    async fn del(&self, key: &str) -> anyhow::Result<()>;
 
-    fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;
-    fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
+    async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;
+    async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
 }
 
-pub trait StorageIter: Iterator<Item = Vec<u8>> {
+#[async_trait::async_trait]
+pub trait StorageIter : Sync + Send {
     fn get_key(&self) -> String;
     fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
+    
+    async fn next(&mut self) -> Option<Vec<u8>>;
+    async fn count(&mut self) -> usize;
 }
 
 pub struct MemoryStorage {

@@ -22,9 +22,13 @@ fn handle_another_sample_message(
     _ctx: &DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let id = _ctx.enqueue(SampleMessage {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    let id = rt.block_on(_ctx.enqueue(SampleMessage {
         txt: "test".to_string(),
-    })?;
+    }))?;
     // _ctx.enqueue_continue(
     //     id.clone(),
     //     SampleMessage {
@@ -45,10 +49,10 @@ struct AppContext {
 }
 
 #[get("/")]
-fn hello(state: &State<AppContext>) -> String {
+async fn hello(state: &State<AppContext>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let msg = AnotherSampleMessage { txt: id };
-    state.jobs.enqueue(msg).expect("Enqueue Job");
+    state.jobs.enqueue(msg).await.expect("Enqueue Job");
     "Hello, world!".to_string()
 }
 

@@ -1,7 +1,6 @@
 use crate::{
-    core::{BgJobHandler, JobParameter},
+    core::BgJobHandler,
     encoder,
-    id::IdOf,
     models::{Job, RequeuedStage, Stage},
     BackgroundJobServer, BackgroundJobServerPublisher, JobId,
 };
@@ -67,15 +66,19 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
     loop {
         println!("Polling reqd jobs");
 
         let publisher = handler.get_publisher();
-        let mut iter = publisher.storage.get_reqd_jobs()?;
-        while let Some(bytes) = iter.next() {
+        let mut iter = rt.block_on(publisher.storage.get_reqd_jobs())?;
+        while let Some(bytes) = rt.block_on(iter.next()) {
             let job_id = encoder::decode::<JobId>(&bytes)?;
 
-            if let Some(job) = publisher.storage.get_job(job_id) {
+            if let Some(job) = rt.block_on(publisher.storage.get_job(job_id)) {
                 if let Stage::Requeued(RequeuedStage {
                     date: _,
                     requeue_count,
@@ -84,18 +87,18 @@ where
                     println!("Job {}: Requeue #{}", job.id, requeue_count);
 
                     let enqueued = job.transition();
-                    if let Err(_) = publisher.save(&enqueued) {
+                    if let Err(_) = rt.block_on(publisher.save(&enqueued)) {
                         continue;
                     }
 
-                    if let Err(_) = publisher.handle_job_enqueue_initial(enqueued) {
+                    if let Err(_) = rt.block_on(publisher.handle_job_enqueue_initial(enqueued)) {
                         continue;
                     }
                 }
             }
         }
 
-        publisher.storage.trim(iter)?;
+        rt.block_on(publisher.storage.trim(iter))?;
 
         std::thread::sleep(Duration::from_secs(1));
     }
@@ -167,6 +170,10 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
     let id = job.id.clone();
     let ptype = job.payload_type.clone();
     let payload = job.payload.clone();
@@ -176,26 +183,27 @@ where
     );
     let publisher = handler.get_publisher();
     let running_job = job.transition();
-    publisher.save(&running_job)?;
+    rt.block_on(publisher.save(&running_job))?;
 
     match handler.dispatch(ptype, &payload) {
         Ok(_) => {
             // success
             let success_job = running_job.transition_success()?;
-            publisher.save(&success_job)?;
+            rt.block_on(publisher.save(&success_job))?;
 
-            publisher.expire(&success_job, Duration::from_secs(3600))?;
+            rt.block_on(publisher.expire(&success_job, Duration::from_secs(3600)))?;
 
             // enqueue waiting jobs
-            if let Some(next_job) = handler
-                .get_publisher()
-                .storage
-                .get_continuation_job(success_job)
-            {
+            if let Some(next_job) = rt.block_on(
+                handler
+                    .get_publisher()
+                    .storage
+                    .get_continuation_job(success_job),
+            ) {
                 let next_job = next_job.transition(); // Waiting -> Enqueued
-                publisher.save(&next_job)?;
+                rt.block_on(publisher.save(&next_job))?;
 
-                publisher.handle_job_enqueue_initial(next_job)?;
+                rt.block_on(publisher.handle_job_enqueue_initial(next_job))?;
             }
         }
         Err(e) => {
@@ -203,7 +211,7 @@ where
 
             // failed, requeue
             let reqd_job = running_job.transition_req()?;
-            handler.get_publisher().save(&reqd_job)?;
+            rt.block_on(handler.get_publisher().save(&reqd_job))?;
             // requeued jobs get polled later ...
         }
     }
