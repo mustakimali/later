@@ -243,4 +243,12 @@ impl Stage {
             | Stage::Requeued(_) => false,
         }
     }
+
+    pub fn is_success(&self) -> bool {
+        match self {
+            Stage::Success(_) => true,
+
+            _ => false,
+        }
+    }
 }

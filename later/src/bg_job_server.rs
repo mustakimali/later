@@ -3,7 +3,7 @@ use crate::{
     encoder,
     id::IdOf,
     models::{Job, RequeuedStage, Stage},
-    BackgroundJobServer, JobId,
+    BackgroundJobServer, BackgroundJobServerPublisher, JobId,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
@@ -46,8 +46,19 @@ where
         })
     }
 
-    pub fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.handler.get_publisher().enqueue(message)
+    // `enqueue`, `enqueue_continue` etc. available as
+    // self impl Deref to BackgroundJobServer
+}
+
+impl<C, H> std::ops::Deref for BackgroundJobServer<C, H>
+where
+    C: Sync + Send + 'static,
+    H: BgJobHandler<C> + Sync + Send + 'static,
+{
+    type Target = BackgroundJobServerPublisher;
+
+    fn deref(&self) -> &Self::Target {
+        self.handler.get_publisher()
     }
 }
 

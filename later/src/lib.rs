@@ -1,8 +1,7 @@
 #![doc = include_str!("../README.md")]
-use crate::core::{BgJobHandler};
+use crate::core::BgJobHandler;
 
 use amiquip::{Channel, Connection};
-
 
 use persist::Persist;
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,6 @@ use std::{
     sync::{Arc, Mutex},
     thread::JoinHandle,
 };
-
 
 pub use anyhow;
 pub use later_derive::background_job;
@@ -53,4 +51,3 @@ pub struct BackgroundJobServerPublisher {
     storage: Persist,
     _connection: Connection,
 }
-

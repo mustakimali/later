@@ -134,6 +134,9 @@ impl BackgroundJobServerPublisher {
     pub(crate) fn handle_job_enqueue_initial(&self, job: Job) -> anyhow::Result<()> {
         match &job.stage {
             Stage::Delayed(delayed) => {
+                // delayed job
+                // should be polled
+
                 if chrono::Utc::now() > delayed.date {
                     let job = job.transition();
                     self.save(&job)?;
@@ -141,7 +144,18 @@ impl BackgroundJobServerPublisher {
                     self.handle_job_enqueue_initial(job)?;
                 }
             }
-            Stage::Waiting(_) => {
+            Stage::Waiting(waiting) => {
+                // continuation
+                // - enqueue if parent is already complete
+                // - schedule self message to check an enqueue later (to prevent race)
+
+                if let Some(parent_job) = self.storage.get_job(waiting.parent_id.clone()) {
+                    if !parent_job.stage.is_success() {
+                        return Ok(());
+                    }
+                }
+
+                // parent job is success or not found (means successful long time ago)
                 let job = job.transition();
                 self.save(&job)?;
 

@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate rocket;
 
-
-
 use bg::*;
 use later::{storage::redis::Redis, BackgroundJobServer};
 use rocket::State;

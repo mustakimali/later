@@ -27,11 +27,14 @@ pub struct TestCommand {
 pub enum Outcome {
     Success,
     Retry(usize),
+    Delay(usize /* Delay ms */),
 }
 
 fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> anyhow::Result<()> {
     let retry_count = {
         COMMANDS.lock().unwrap().push(payload.clone());
+
+        println!("[TEST] Command received {}", payload.name.clone());
 
         COMMANDS
             .lock()
@@ -53,6 +56,10 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
             true => Ok(()),
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
+        Outcome::Delay(delay_ms) => {
+            sleep_ms(delay_ms);
+            Ok(())
+        }
     }
 }
 
@@ -84,6 +91,43 @@ fn integration_retry() {
     sleep_ms(2000);
 
     assert_eq!(3, count("retry"));
+}
+
+#[test]
+fn integration_continuation() {
+    let job_server = create();
+    let parent_job_id = job_server
+        .enqueue(TestCommand {
+            name: "continuation-1".to_string(),
+            outcome: Outcome::Delay(250),
+        })
+        .expect("Enqueue job");
+
+    let child_job_1 = job_server
+        .enqueue_continue(
+            parent_job_id,
+            TestCommand {
+                name: "continuation-2".to_string(),
+                outcome: Outcome::Delay(250),
+            },
+        )
+        .expect("Enqueue job");
+
+    let _ = job_server
+        .enqueue_continue(
+            child_job_1,
+            TestCommand {
+                name: "continuation-3".to_string(),
+                outcome: Outcome::Success,
+            },
+        )
+        .expect("Enqueue job");
+
+    sleep_ms(2000);
+
+    assert_eq!(1, count("continuation-1"));
+    assert_eq!(1, count("continuation-2"));
+    assert_eq!(1, count("continuation-3"));
 }
 
 fn count(ty: &str) -> usize {
