@@ -260,7 +260,7 @@ mod test {
         // should be empty
         let mut range = storage.scan_range(&key).await;
         while range.next().await.is_some() {}
-        let _ = storage.trim(&range);
+        let _ = storage.trim(&range).await;
 
         assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
     }
