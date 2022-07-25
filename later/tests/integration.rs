@@ -65,7 +65,7 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
 
 #[tokio::test]
 async fn integration_basic() {
-    let job_server = create();
+    let job_server = create().await;
     job_server
         .enqueue(TestCommand {
             name: "basic".to_string(),
@@ -74,14 +74,14 @@ async fn integration_basic() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(250);
+    sleep_ms(250).await;
 
     assert_eq!(1, count("basic"));
 }
 
 #[tokio::test]
 async fn integration_retry() {
-    let job_server = create();
+    let job_server = create().await;
     job_server
         .enqueue(TestCommand {
             name: "retry".to_string(),
@@ -90,14 +90,14 @@ async fn integration_retry() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(2000);
+    sleep_ms(2000).await;
 
     assert_eq!(3, count("retry"));
 }
 
 #[tokio::test]
 async fn integration_continuation() {
-    let job_server = create();
+    let job_server = create().await;
     let parent_job_id = job_server
         .enqueue(TestCommand {
             name: "continuation-1".to_string(),
@@ -128,7 +128,7 @@ async fn integration_continuation() {
         .await
         .expect("Enqueue job");
 
-    sleep_ms(2000);
+    sleep_ms(2000).await;
 
     assert_eq!(1, count("continuation-1"));
     assert_eq!(1, count("continuation-2"));
@@ -144,13 +144,13 @@ fn count(ty: &str) -> usize {
         .count()
 }
 
-fn sleep_ms(ms: usize) {
-    std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+async fn sleep_ms(ms: usize) {
+    tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
 }
 
-fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
+async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext {};
-    let storage = Redis::new_cleared("redis://127.0.0.1").expect("connect to redis");
+    let storage = Redis::new_cleared("redis://127.0.0.1").await.expect("connect to redis");
     let id = format!(
         "later-test-{}-{}",
         SystemTime::now()

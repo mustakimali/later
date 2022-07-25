@@ -57,9 +57,9 @@ async fn hello(state: &State<AppContext>) -> String {
 }
 
 #[launch]
-fn rocket() -> _ {
+async fn rocket() -> _ {
     let job_ctx = JobContext {};
-    let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+    let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
     let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
@@ -74,7 +74,7 @@ fn rocket() -> _ {
     let ctx = AppContext { jobs: bjs };
 
     #[cfg(debug_assertions)]
-    non_generated::test_non_generated();
+    non_generated::test_non_generated().await;
 
     rocket::build().mount("/", routes![hello]).manage(ctx)
 }

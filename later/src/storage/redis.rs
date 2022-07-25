@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use super::{Storage, StorageIter};
 use crate::encoder;
-use redis::{Client, Commands, Connection};
+use redis::{aio::Connection, AsyncCommands, Client, Commands};
 use serde::de::DeserializeOwned;
 
 #[derive(Clone)]
 pub struct Redis {
     _client: Client,
-    connection: Arc<Mutex<Connection>>,
+    connection: Arc<async_mutex::Mutex<Connection>>,
 }
 
 struct ScanRange {
@@ -20,56 +20,46 @@ struct ScanRange {
 }
 
 impl Redis {
-    pub fn new(url: &str) -> anyhow::Result<Self> {
+    pub async fn new(url: &str) -> anyhow::Result<Self> {
         let client = redis::Client::open(url)?;
-        let conn = client.get_connection()?;
+        let conn = client.get_async_connection().await?;
 
         Ok(Self {
             _client: client,
-            connection: Arc::new(Mutex::new(conn)),
+            connection: Arc::new(async_mutex::Mutex::new(conn)),
         })
     }
 
-    pub fn new_cleared(url: &str) -> anyhow::Result<Self> {
+    pub async fn new_cleared(url: &str) -> anyhow::Result<Self> {
         let client = redis::Client::open(url)?;
-        let mut conn = client.get_connection()?;
+        let mut conn = client.get_async_connection().await?;
 
-        redis::cmd("FLUSHDB").query(&mut conn)?;
+        redis::cmd("FLUSHDB").query_async(&mut conn).await?;
 
         Ok(Self {
             _client: client,
-            connection: Arc::new(Mutex::new(conn)),
+            connection: Arc::new(async_mutex::Mutex::new(conn)),
         })
     }
 
-    fn get_of_type<T>(&self, key: &str) -> Option<T>
+    async fn get_of_type<T>(&self, key: &str) -> Option<T>
     where
         T: DeserializeOwned,
     {
-        match self
-            .get_connection()
-            .ok()
-            .map(|mut c| c.get::<_, Vec<u8>>(key))
-        {
-            Some(Ok(bytes)) => encoder::decode::<T>(&bytes).ok(),
-            _ => None,
+        let mut conn = self.connection.lock().await;
+        if let Some(bytes) = conn.get::<_, Vec<u8>>(key).await.ok() {
+            return encoder::decode::<T>(&bytes).ok();
         }
-    }
 
-    fn get_connection(&self) -> anyhow::Result<MutexGuard<'_, Connection>> {
-        self.connection.lock().map_err(|e| anyhow::anyhow!("{}", e))
+        None
     }
 }
 
 #[async_trait::async_trait]
 impl Storage for Redis {
     async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        match self
-            .get_connection()
-            .ok()
-            .map(|mut c| c.get::<_, Vec<u8>>(key))
-        {
-            Some(Ok(data)) => {
+        match self.connection.lock().await.get::<_, Vec<u8>>(key).await {
+            Ok(data) => {
                 if data.len() == 0 {
                     None
                 } else {
@@ -81,16 +71,16 @@ impl Storage for Redis {
     }
 
     async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        Ok(self.get_connection()?.set(key, value)?)
+        Ok(self.connection.lock().await.set(key, value).await?)
     }
 
     async fn del(&self, key: &str) -> anyhow::Result<()> {
-        Ok(self.get_connection()?.del(key)?)
+        Ok(self.connection.lock().await.del(key).await?)
     }
 
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
-        let count = self.get_of_type::<i32>(&count_key).unwrap_or_else(|| 0);
+        let count = self.get_of_type::<i32>(&count_key).await.unwrap_or_else(|| 0);
 
         let key = format!("{}-{}", key, count);
 
@@ -129,8 +119,8 @@ impl Storage for Redis {
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
         let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
-        let start_from_idx = self.get_of_type::<usize>(&start_key).unwrap_or_else(|| 0);
-        let item_in_range = self.get_of_type::<usize>(&count_key).unwrap_or_else(|| 0);
+        let start_from_idx = self.get_of_type::<usize>(&start_key).await.unwrap_or_else(|| 0);
+        let item_in_range = self.get_of_type::<usize>(&count_key).await.unwrap_or_else(|| 0);
 
         let scan = ScanRange {
             key: key.to_string(),
@@ -199,7 +189,7 @@ mod test {
     async fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
         storage.set("key", my_data).await.unwrap();
 
         let result = storage.get("key").await.unwrap();
@@ -210,7 +200,7 @@ mod test {
     async fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
 
         for _ in 0..10 {
             storage
@@ -229,7 +219,7 @@ mod test {
     async fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+        let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
 
         for idx in 0..100 {
             storage

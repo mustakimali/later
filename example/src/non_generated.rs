@@ -32,9 +32,9 @@ fn handle_another_sample_message(
     Ok(())
 }
 
-pub fn test_non_generated() {
+pub async fn test_non_generated() {
     let job_ctx = JobContext {};
-    let storage = Redis::new("redis://127.0.0.1/").expect("connect to redis");
+    let storage = Redis::new("redis://127.0.0.1/").await.expect("connect to redis");
     let bjs = DeriveHandlerBuilder::new(
         job_ctx,
         "fnf-example".into(),
