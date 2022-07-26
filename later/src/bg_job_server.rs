@@ -121,7 +121,7 @@ where
         routing_key,
         QueueDeclareOptions {
             durable: true,
-            auto_delete: false,
+            auto_delete: true,
             ..Default::default()
         },
     )?;
@@ -195,18 +195,20 @@ where
             rt.block_on(publisher.expire(&success_job, Duration::from_secs(3600)))?;
 
             // enqueue waiting jobs
-            if let Some(next_job) = rt.block_on(
+            if let Some(waiting_jobs) = rt.block_on(
                 handler
                     .get_publisher()
                     .storage
                     .get_continuation_job(success_job),
             ) {
-                println!("Continuing {} -> {}", success_job_id, next_job.id);
+                for next in waiting_jobs {
+                    println!("Continuing {} -> {}", success_job_id, next.id);
 
-                let next_job = next_job.transition(); // Waiting -> Enqueued
-                rt.block_on(publisher.save(&next_job))?;
+                    let next_job = next.transition(); // Waiting -> Enqueued
+                    rt.block_on(publisher.save(&next_job))?;
 
-                rt.block_on(publisher.handle_job_enqueue_initial(next_job))?;
+                    rt.block_on(publisher.handle_job_enqueue_initial(next_job))?;
+                }
             }
         }
         Err(e) => {

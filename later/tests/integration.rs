@@ -1,3 +1,5 @@
+#![cfg(feature = "redis")]
+
 use std::{sync::Mutex, time::SystemTime};
 
 use later::BackgroundJobServer;
@@ -67,7 +69,6 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
     }
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_basic() {
     let job_server = create().await;
@@ -97,7 +98,6 @@ async fn integration_retry() {
     assert_invocations(3, "retry").await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_continuation() {
     let job_server = create().await;
@@ -138,6 +138,46 @@ async fn integration_continuation() {
     assert_invocations(1, "continuation-1").await;
 }
 
+#[tokio::test]
+async fn integration_continuation_multiple() {
+    let job_server = create().await;
+    let parent_job_id = job_server
+        .enqueue(TestCommand {
+            name: "continuation-1".to_string(),
+            outcome: Outcome::Delay(250),
+        })
+        .await
+        .expect("Enqueue job");
+
+    let _ = job_server
+        .enqueue_continue(
+            parent_job_id.clone(),
+            TestCommand {
+                name: "continuation-2".to_string(),
+                outcome: Outcome::Retry(3),
+            },
+        )
+        .await
+        .expect("Enqueue job");
+
+    let _ = job_server
+        .enqueue_continue(
+            parent_job_id,
+            TestCommand {
+                name: "continuation-3".to_string(),
+                outcome: Outcome::Success,
+            },
+        )
+        .await
+        .expect("Enqueue job");
+
+    println!("--- All job scheduled ---");
+
+    assert_invocations(3, "continuation-2").await;
+    assert_invocations(1, "continuation-3").await;
+    assert_invocations(1, "continuation-1").await;
+}
+
 fn count_of_invocation(ty: &str) -> usize {
     COMMANDS
         .lock()
@@ -147,7 +187,6 @@ fn count_of_invocation(ty: &str) -> usize {
         .count()
 }
 
-#[cfg(feature = "postgres")]
 async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext {};
     let storage = later::storage::redis::Redis::new_cleared("redis://127.0.0.1")

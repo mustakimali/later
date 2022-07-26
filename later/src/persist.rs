@@ -57,21 +57,40 @@ impl Persist {
         self.inner.set(&id.to_string(), &bytes).await
     }
 
+    pub async fn push<T>(&self, id: Id, item: T) -> anyhow::Result<()>
+    where
+        T: Serialize,
+    {
+        let bytes = encoder::encode(item)?;
+        self.inner.push(&id.to_string(), &bytes).await
+    }
+
     pub async fn save_continuation(
         &self,
         job_id: &JobId,
         parent_job_id: JobId,
     ) -> anyhow::Result<()> {
         let id = IdOf::ContinuationOf(parent_job_id).get_id(&self.key_prefix);
-        self.save(id, job_id).await
+        self.push(id, job_id).await
     }
 
-    pub async fn get_continuation_job(&self, job: Job) -> Option<Job> {
+    pub async fn get_continuation_job(&self, job: Job) -> Option<Vec<Job>> {
         let id = IdOf::ContinuationOf(job.id).get_id(&self.key_prefix);
-        // ToDo: more than one job be in scheduled
-        match self.get_of_type::<JobId>(id).await {
-            Some(next_job_id) => self.get_job(next_job_id).await,
-            None => None,
+
+        let mut items = Vec::default();
+        let mut iter = self.inner.scan_range(&id.to_string()).await;
+        while let Some(id_bytes) = iter.next().await {
+            if let Ok(job_id) = encoder::decode::<JobId>(&id_bytes) {
+                if let Some(job) = self.get_job(job_id).await {
+                    items.push(job);
+                }
+            }
+        }
+
+        if items.len() > 0 {
+            Some(items)
+        } else {
+            None
         }
     }
 
