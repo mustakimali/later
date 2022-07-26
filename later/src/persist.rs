@@ -74,8 +74,8 @@ impl Persist {
         self.push(id, job_id).await
     }
 
-    pub async fn get_continuation_job(&self, job: Job) -> Option<Vec<Job>> {
-        let id = IdOf::ContinuationOf(job.id).get_id(&self.key_prefix);
+    pub async fn get_continuation_job(&self, job: &Job) -> Option<Vec<Job>> {
+        let id = IdOf::ContinuationOf(job.id.clone()).get_id(&self.key_prefix);
 
         let mut items = Vec::default();
         let mut iter = self.inner.scan_range(&id.to_string()).await;
@@ -92,6 +92,11 @@ impl Persist {
         } else {
             None
         }
+    }
+
+    pub async fn del_get_continuation_job(&self, job: &Job) -> anyhow::Result<()> {
+        let id = IdOf::ContinuationOf(job.id.clone()).get_id(&self.key_prefix);
+        self.inner.del_range(&id.to_string()).await
     }
 
     pub async fn save_job_id(&self, id: &JobId, stage: &Stage) -> anyhow::Result<()> {

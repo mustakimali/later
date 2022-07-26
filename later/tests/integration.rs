@@ -1,14 +1,11 @@
 #![cfg(feature = "redis")]
 
-use std::{sync::Mutex, time::SystemTime};
-
 use later::BackgroundJobServer;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-
-lazy_static! {
-    static ref COMMANDS: Mutex<Vec<TestCommand>> = Mutex::new(Vec::default());
-}
+use std::{
+    sync::{Arc, Mutex, MutexGuard},
+    time::SystemTime,
+};
 
 #[derive(Clone)]
 struct AppContext {}
@@ -32,16 +29,14 @@ pub enum Outcome {
     Delay(usize /* Delay ms */),
 }
 
-fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> anyhow::Result<()> {
+fn handle_internal(payload: TestCommand, invc: Arc<Mutex<Vec<TestCommand>>>) -> anyhow::Result<()> {
     let retry_count = {
-        COMMANDS.lock().unwrap().push(payload.clone());
+        let mut invc = invc.lock().expect("acquire lock to invc");
+        invc.push(payload.clone());
 
         println!("[TEST] Command received {}", payload.name.clone());
 
-        COMMANDS
-            .lock()
-            .unwrap()
-            .iter()
+        invc.iter()
             .filter(|cmd| {
                 if let Outcome::Retry(_) = cmd.outcome {
                     true
@@ -71,7 +66,10 @@ fn handle_command(_ctx: &JobServerContext<AppContext>, payload: TestCommand) -> 
 
 #[tokio::test]
 async fn integration_basic() {
-    let job_server = create().await;
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let invocations2 = invocations.clone();
+    let job_server =
+        create_server(move |_ctx, payload| handle_internal(payload, invocations2.clone())).await;
     job_server
         .enqueue(TestCommand {
             name: "basic".to_string(),
@@ -80,13 +78,15 @@ async fn integration_basic() {
         .await
         .expect("Enqueue job");
 
-    assert_invocations(1, "basic").await;
+    assert_invocations(1, "basic", invocations.clone()).await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn integration_retry() {
-    let job_server = create().await;
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let invocations2 = invocations.clone();
+    let job_server =
+        create_server(move |_ctx, payload| handle_internal(payload, invocations2.clone())).await;
     job_server
         .enqueue(TestCommand {
             name: "retry".to_string(),
@@ -95,16 +95,19 @@ async fn integration_retry() {
         .await
         .expect("Enqueue job");
 
-    assert_invocations(3, "retry").await;
+    assert_invocations(3, "retry", invocations.clone()).await;
 }
 
 #[tokio::test]
-async fn integration_continuation() {
-    let job_server = create().await;
+async fn integration_continuation_basic() {
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let invocations2 = invocations.clone();
+    let job_server =
+        create_server(move |_ctx, payload| handle_internal(payload, invocations2.clone())).await;
     let parent_job_id = job_server
         .enqueue(TestCommand {
             name: "continuation-1".to_string(),
-            outcome: Outcome::Delay(250),
+            outcome: Outcome::Delay(100),
         })
         .await
         .expect("Enqueue job");
@@ -133,17 +136,20 @@ async fn integration_continuation() {
 
     println!("--- All job scheduled ---");
 
-    assert_invocations(1, "continuation-3").await;
-    assert_invocations(3, "continuation-2").await;
-    assert_invocations(1, "continuation-1").await;
+    assert_invocations(1, "continuation-3", invocations.clone()).await;
+    assert_invocations(3, "continuation-2", invocations.clone()).await;
+    assert_invocations(1, "continuation-1", invocations.clone()).await;
 }
 
 #[tokio::test]
 async fn integration_continuation_multiple() {
-    let job_server = create().await;
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let invocations2 = invocations.clone();
+    let job_server =
+        create_server(move |_ctx, payload| handle_internal(payload, invocations2.clone())).await;
     let parent_job_id = job_server
         .enqueue(TestCommand {
-            name: "continuation-1".to_string(),
+            name: "continuation-multiple-1".to_string(),
             outcome: Outcome::Delay(250),
         })
         .await
@@ -153,7 +159,7 @@ async fn integration_continuation_multiple() {
         .enqueue_continue(
             parent_job_id.clone(),
             TestCommand {
-                name: "continuation-2".to_string(),
+                name: "continuation-multiple-2".to_string(),
                 outcome: Outcome::Retry(3),
             },
         )
@@ -164,7 +170,7 @@ async fn integration_continuation_multiple() {
         .enqueue_continue(
             parent_job_id,
             TestCommand {
-                name: "continuation-3".to_string(),
+                name: "continuation-multiple-3".to_string(),
                 outcome: Outcome::Success,
             },
         )
@@ -173,21 +179,19 @@ async fn integration_continuation_multiple() {
 
     println!("--- All job scheduled ---");
 
-    assert_invocations(3, "continuation-2").await;
-    assert_invocations(1, "continuation-3").await;
-    assert_invocations(1, "continuation-1").await;
+    assert_invocations(3, "continuation-multiple-2", invocations.clone()).await;
+    assert_invocations(1, "continuation-multiple-3", invocations.clone()).await;
+    assert_invocations(1, "continuation-multiple-1", invocations.clone()).await;
 }
 
-fn count_of_invocation(ty: &str) -> usize {
-    COMMANDS
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|c| c.name == ty)
-        .count()
+fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<TestCommand>>) -> usize {
+    inv.iter().filter(|c| c.name == ty).count()
 }
 
-async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
+async fn create_server<C>(c: C) -> BackgroundJobServer<AppContext, JobServer<AppContext>>
+where
+    C: Fn(&JobServerContext<AppContext>, TestCommand) -> anyhow::Result<()> + Send + Sync + 'static,
+{
     let job_ctx = AppContext {};
     let storage = later::storage::redis::Redis::new_cleared("redis://127.0.0.1")
         .await
@@ -207,21 +211,26 @@ async fn create() -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    .with_test_command_handler(handle_command)
+    .with_test_command_handler(c)
     .build()
     .expect("start bg server")
 }
 
-async fn assert_invocations(expected_num: usize, ty: &str) {
+async fn assert_invocations(expected_num: usize, ty: &str, inv: Arc<Mutex<Vec<TestCommand>>>) {
     let start = SystemTime::now();
     while SystemTime::now().duration_since(start).unwrap().as_millis() < 3000
-        && count_of_invocation(ty) != expected_num
+        && count_of_invocation_for(ty, &inv.lock().unwrap()) != expected_num
     {
         sleep_ms(250).await;
     }
 
-    let invocations = count_of_invocation(ty);
-    assert_eq!(expected_num, invocations);
+    let invocations = count_of_invocation_for(ty, &inv.lock().unwrap());
+
+    assert_eq!(
+        expected_num, invocations,
+        "Invocation for {} must be {}",
+        ty, expected_num
+    );
 
     println!("Invocations: {} x {} ... Check", ty, invocations);
 }

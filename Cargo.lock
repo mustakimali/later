@@ -1063,7 +1063,6 @@ dependencies = [
  "chrono",
  "futures-core",
  "later-derive",
- "lazy_static",
  "redis",
  "rmp-serde",
  "serde",

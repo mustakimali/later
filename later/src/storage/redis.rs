@@ -78,6 +78,25 @@ impl Storage for Redis {
         Ok(self.connection.lock().await.del(key).await?)
     }
 
+    async fn del_range(&self, key: &str) -> anyhow::Result<()> {
+        let count_key = format!("{}-count", key);
+        let start_key = format!("{}-start", key);
+        let start_from_idx = self
+            .get_of_type::<usize>(&start_key)
+            .await
+            .unwrap_or_else(|| 0);
+        let item_in_range = self
+            .get_of_type::<usize>(&count_key)
+            .await
+            .unwrap_or_else(|| 0);
+
+        for idx in start_from_idx..item_in_range {
+            let item_key = get_scan_item_key(key, idx);
+            self.del(&item_key).await?;
+        }
+
+        Ok(())
+    }
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let count = self

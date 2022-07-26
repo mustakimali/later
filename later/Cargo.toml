@@ -33,6 +33,3 @@ async-mutex = "1.4"
 
 sqlx = { optional = true, version = "0.5", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
-
-[dev-dependencies]
-lazy_static = "1.4.0"

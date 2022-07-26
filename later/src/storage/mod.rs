@@ -11,9 +11,11 @@ pub trait Storage: Sync + Send {
     async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn del(&self, key: &str) -> anyhow::Result<()>;
 
+    // hashset
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
+    async fn del_range(&self, key: &str) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]

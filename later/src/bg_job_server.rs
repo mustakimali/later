@@ -199,7 +199,7 @@ where
                 handler
                     .get_publisher()
                     .storage
-                    .get_continuation_job(success_job),
+                    .get_continuation_job(&success_job),
             ) {
                 for next in waiting_jobs {
                     println!("Continuing {} -> {}", success_job_id, next.id);
@@ -209,6 +209,13 @@ where
 
                     rt.block_on(publisher.handle_job_enqueue_initial(next_job))?;
                 }
+
+                rt.block_on(
+                    handler
+                        .get_publisher()
+                        .storage
+                        .del_get_continuation_job(&success_job),
+                )?;
             }
         }
         Err(e) => {
