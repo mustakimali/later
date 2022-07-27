@@ -51,13 +51,13 @@ impl BackgroundJobServerPublisher {
     }
     pub async fn enqueue_delayed_at(
         &self,
-        _message: impl JobParameter,
+        message: impl JobParameter,
         time: chrono::DateTime<chrono::Utc>,
     ) -> anyhow::Result<JobId> {
         if time <= chrono::Utc::now() {
             return Err(anyhow::anyhow!("Time must be in the future"));
         }
-        todo!()
+        self.enqueue_internal(message, None, Some(time)).await
     }
 
     pub async fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
