@@ -1,7 +1,7 @@
 use crate::{
     core::BgJobHandler,
     encoder,
-    models::{Job, RequeuedStage, Stage},
+    models::{DelayedStage, Job, RequeuedStage, Stage},
     BackgroundJobServer, BackgroundJobServerPublisher, JobId,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
@@ -33,6 +33,11 @@ where
         let handler_for_poller = handler.clone();
         workers.push(std::thread::spawn(move || {
             start_poller_reqd_jobs(handler_for_poller)
+        }));
+
+        let handler_for_poller = handler.clone();
+        workers.push(std::thread::spawn(move || {
+            start_poller_delayed_jobs(handler_for_poller)
         }));
 
         // allow some time for the workers to start up
@@ -75,8 +80,8 @@ where
 
         let publisher = handler.get_publisher();
         let mut iter = rt.block_on(publisher.storage.get_reqd_jobs())?;
-        while let Some(bytes) = rt.block_on(iter.next()) {
-            let job_id = encoder::decode::<JobId>(&bytes)?;
+        while let Some(job_id_bytes) = rt.block_on(iter.next()) {
+            let job_id = encoder::decode::<JobId>(&job_id_bytes)?;
 
             if let Some(job) = rt.block_on(publisher.storage.get_job(job_id)) {
                 if let Stage::Requeued(RequeuedStage {
@@ -101,6 +106,46 @@ where
         rt.block_on(publisher.storage.trim(iter))?;
 
         std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+fn start_poller_delayed_jobs<C, H>(handler: Arc<H>) -> anyhow::Result<()>
+where
+    C: Sync + Send,
+    H: BgJobHandler<C> + Sync + Send + 'static,
+{
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
+    loop {
+        println!("Polling delayed jobs");
+
+        let publisher = handler.get_publisher();
+        let mut iter = rt.block_on(publisher.storage.get_delayed_jobs())?;
+
+        while let Some(bytes) = rt.block_on(iter.next()) {
+            let job_id = encoder::decode::<JobId>(&bytes)?;
+
+            if let Some(job) = rt.block_on(publisher.storage.get_job(job_id.clone())) {
+                if let Stage::Delayed(delay) = &job.stage.clone() {
+                    if delay.is_time() {
+                        println!("Job {}: Waiting is finished", job.id);
+
+                        if let Err(_) = rt.block_on(publisher.handle_job_enqueue_initial(job)) {
+                            rt.block_on(
+                                publisher
+                                    .storage
+                                    .save_job_id(&job_id, &Stage::Delayed(delay.clone())),
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+
+        rt.block_on(publisher.storage.trim(iter))?;
+        std::thread::sleep(Duration::from_secs(2)); // ToDo: configure
     }
 }
 

@@ -72,9 +72,6 @@ impl BackgroundJobServerPublisher {
     ) -> anyhow::Result<JobId> {
         let id = uuid::Uuid::new_v4().to_string();
 
-        // self.storage.set(format!("job-{}", id), job);
-        // self.storage.push_job_id(id);
-
         let job = Job {
             id: JobId(id.clone()),
             payload_type: message.get_ptype(),
@@ -134,7 +131,7 @@ impl BackgroundJobServerPublisher {
                 // delayed job
                 // should be polled
 
-                if chrono::Utc::now() > delayed.date {
+                if delayed.is_time() {
                     let job = job.transition();
                     self.save(&job).await?;
 

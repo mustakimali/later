@@ -66,6 +66,12 @@ impl StageName for RequeuedStage {
     }
 }
 
+impl DelayedStage {
+    pub fn is_time(&self) -> bool {
+        chrono::Utc::now() >= self.not_before
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct DelayedStage {

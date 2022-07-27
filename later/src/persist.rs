@@ -1,7 +1,7 @@
 use crate::{
     encoder::{self},
     id::{Id, IdOf},
-    models::{Job, RequeuedStage, Stage, StageName, WaitingStage},
+    models::{Job, RequeuedStage, Stage, StageName, WaitingStage, DelayedStage},
     storage::{Storage, StorageIter},
     JobId,
 };
@@ -109,9 +109,8 @@ impl Persist {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn get_waiting_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
-        self.get_jobs_to_poll(&WaitingStage::get_name()).await
+    pub async fn get_delayed_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
+        self.get_jobs_to_poll(&DelayedStage::get_name()).await
     }
 
     pub async fn get_reqd_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {

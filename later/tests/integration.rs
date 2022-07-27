@@ -38,7 +38,7 @@ async fn integration_retry() {
     assert_invocations(3, "retry", invocations.clone()).await;
 }
 
-//#[tokio::test]
+#[tokio::test]
 async fn integration_delayed() {
     let invocations = Arc::new(Mutex::new(Vec::default()));
     let job_server = create_server(invocations.clone()).await;

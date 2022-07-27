@@ -36,12 +36,12 @@ pub async fn create_server(
         .await
         .expect("connect to redis");
     let id = format!(
-        "later-test-{}-{}",
+        "test-{}{}",
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_millis(),
-        uuid::Uuid::new_v4()
+        uuid::Uuid::new_v4().simple().to_string()[28..].to_string()
     );
 
     JobServerBuilder::new(
