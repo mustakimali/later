@@ -2,7 +2,10 @@
 
 A distributed background job manager and runner for Rust. This is currently in PoC stage.
 
-## How to enqueue Fire and Forget jobs
+## Set up
+
+<details>
+  <summary>Click to expand: One-time setup during application startup!</summary>
 
 ### 1. Import `later` and required dependencies
 
@@ -14,7 +17,7 @@ serde = "1.0"
 
 ### 2. Define some types to use as a payload to the background jobs
 
-```rs
+```rust
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)] // <- Required derives
@@ -29,7 +32,7 @@ pub struct SendEmail {
 
 ### 3. Generate the stub
 
-```rs
+```rust
 later::background_job! {
     struct Jobs {
         // Use the format
@@ -49,16 +52,18 @@ This generates two types
 
 For `struct Jobs` a type `JobsBuilder` will be generated. Use this to bootstrap the server.
 
-```rs
+```rust
 // bootstrap the server
 let job_ctx = JobContext {};
 let ctx = MyContext{ /*..*/ };                  // Any context to pass onto the handlers
 let storage = Redis::new("redis://127.0.0.1/")  // More storage option to be available later
     .await
     .expect("connect to redis");
-let bg_jobs = JobsBuilder::new(
+let ctx = JobsBuilder::new(
         ctx,                                        // Pass the context here
         "later-example".into(),                     // Unique name for this app
+                                                    // Ensure the this is same in multiple
+                                                    // instances of this app.
         "amqp://guest:guest@localhost:5672".into(), // RabbitMq instance
     )
     // for each payload defined in the `struct Jobs` above
@@ -68,8 +73,8 @@ let bg_jobs = JobsBuilder::new(
     .build()
     .expect("start BG Jobs server");
 
-// use bg_jobs.enqueue(SendEmail{ ... }) to enqueue jobs,
-// or bg_jobs.enqueue_continue(parent_job_id, SendEmail{ ... }) to chain jobs.
+// use ctx.enqueue(SendEmail{ ... }) to enqueue jobs,
+// or ctx.enqueue_continue(parent_job_id, SendEmail{ ... }) to chain jobs.
 // this will only accept types defined inside the macro above
 
 // define handler
@@ -87,15 +92,74 @@ fn handle_send_email(
     }
 ```
 
+</details>
+
+---
+
+## Fire and forget jobs
+
+Fire and forget jobs are executed only once and executed by an available worker almost immediately.
+
+```rust
+ctx.enqueue(SendEmail{
+    address: "hello@rust-lang.org".to_string(),
+    body: "You rock!".to_string() 
+});
+
+```
+
+## Continuations
+
+One or many jobs are chained together to create an workflow. Child jobs are executed **only when parent job has been finished**.
+
+```rust
+let email_welcome = ctx.enqueue(SendEmail{
+    address: "customer@example.com".to_string(),
+    body: "Creating your account!".to_string() 
+});
+
+let create_account = ctx.enqueue_continue(email_welcome, CreateAccount { ... });
+
+let email_confirmation = ctx.enqueue_continue(create_account, SendEmail{
+    address: "customer@example.com".to_string(),
+    body: "Your account has been created!".to_string() 
+});
+
+```
+
+## Delayed jobs
+
+Just like fire and forget jobs that starts after a certain interval.
+
+```rust
+// delay
+ctx.enqueue_delayed(SendEmail{
+    address: "hello@rust-lang.org".to_string(),
+    body: "You rock!".to_string() 
+}, std::time::Duration::from_secs(60));
+
+// specific time
+let run_job_at : chrono::DateTime<Utc> = ...;
+ctx.enqueue_delayed_at(SendEmail{
+    address: "hello@rust-lang.org".to_string(),
+    body: "You rock!".to_string() 
+}, run_job_at);
+
+```
+
+## Recurring jobs
+
+_(Coming soon)_
+
 
 # Project status
 
-This is PoC at this moment. I aim to make something like [Hangfire for .NET](https://www.hangfire.io/).
-Upcoming features are
+This is PoC at this moment. Upcoming features are
 
 - [ ] Multiple storage backend (redis, postgres)
 - [x] Continuation
-- [ ] Delayed Jobs (WIP)
+- [x] Delayed Jobs
 - [ ] Recurring jobs
 - [ ] Dashboard
 - [ ] Use storage backend for scheduling (to remove dependency to RabbitMQ)
+- [ ] Ergonomic API

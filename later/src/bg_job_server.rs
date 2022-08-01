@@ -1,7 +1,7 @@
 use crate::{
     core::BgJobHandler,
     encoder,
-    models::{DelayedStage, Job, RequeuedStage, Stage},
+    models::{Job, RequeuedStage, Stage},
     BackgroundJobServer, BackgroundJobServerPublisher, JobId,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};

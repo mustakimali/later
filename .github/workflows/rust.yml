@@ -19,4 +19,4 @@ jobs:
     - uses: pustovitDmytro/redis-github-action@v1.0.2
     - uses: Namoshek/rabbitmq-github-action@v1.1.0
     - name: Run tests
-      run: cargo test -- --nocapture
+      run: cargo test -- --test-threads 1 --nocapture
