@@ -83,11 +83,7 @@ pub fn handle_internal(
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
         Outcome::Delay(delay_ms) => {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?;
-
-            rt.block_on(sleep_ms(delay_ms));
+            sleep_blocking_ms(delay_ms);
             Ok(())
         }
     }
@@ -105,7 +101,7 @@ pub async fn assert_invocations_with_delay(
 ) {
     let start = SystemTime::now();
     let test_timeout = expected_delay
-        .unwrap_or_else(|| Duration::from_secs(3))
+        .unwrap_or_else(|| Duration::from_secs(10))
         .add(Duration::from_secs(1));
 
     while SystemTime::now().duration_since(start).unwrap() < test_timeout
@@ -142,4 +138,8 @@ fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<TestCommand>>) -> usiz
 
 async fn sleep_ms(ms: usize) {
     tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
+}
+
+fn sleep_blocking_ms(ms: usize) {
+    std::thread::sleep(std::time::Duration::from_millis(ms as u64))
 }

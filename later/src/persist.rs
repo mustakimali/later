@@ -1,9 +1,9 @@
 use crate::{
     encoder::{self},
     id::{Id, IdOf},
-    models::{DelayedStage, Job, RequeuedStage, Stage, StageName, WaitingStage},
+    models::{DelayedStage, Job, RequeuedStage, Stage, StageName},
     storage::{Storage, StorageIter},
-    JobId,
+    JobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -12,11 +12,23 @@ pub(crate) struct Persist {
     key_prefix: String,
 }
 
+pub(crate) struct Config<'s> {
+    inner: &'s Box<dyn Storage>,
+    key_prefix: String,
+}
+
 impl Persist {
     pub fn new(storage: Box<dyn Storage>, key_prefix: String) -> Self {
         Self {
             inner: storage,
             key_prefix,
+        }
+    }
+
+    pub fn config(&self) -> Config {
+        Config {
+            inner: &self.inner,
+            key_prefix: self.key_prefix.clone(),
         }
     }
 
@@ -121,5 +133,62 @@ impl Persist {
         let key = IdOf::JobsInStagesId(name.to_string()).get_id(&&self.key_prefix);
         let iter = self.inner.scan_range(&key.to_string()).await;
         Ok(iter)
+    }
+}
+
+impl<'s> Config<'s> {
+    pub async fn poll_delayed_jobs_last_run(&self) -> UtcDateTime {
+        let one_year =
+            chrono::Duration::from_std(std::time::Duration::from_secs(3600 * 24 * 365)).unwrap();
+        let def = chrono::Utc::now().checked_sub_signed(one_year).unwrap();
+
+        self.get(
+            IdOf::ConfigDateLastPolledForDelayedJobs.get_id(&self.key_prefix),
+            def,
+        )
+        .await
+    }
+
+    pub async fn poll_requeued_jobs_last_run(&self) -> UtcDateTime {
+        let one_year =
+            chrono::Duration::from_std(std::time::Duration::from_secs(3600 * 24 * 365)).unwrap();
+        let def = chrono::Utc::now().checked_sub_signed(one_year).unwrap();
+
+        self.get(
+            IdOf::ConfigDateLastPolledForReqdJobs.get_id(&self.key_prefix),
+            def,
+        )
+        .await
+    }
+
+    pub async fn poll_delayed_jobs_last_run_set(&self) -> anyhow::Result<()> {
+        self.set(
+            IdOf::ConfigDateLastPolledForDelayedJobs.get_id(&self.key_prefix),
+            chrono::Utc::now(),
+        )
+        .await
+    }
+
+    pub async fn poll_requeued_jobs_last_run_set(&self) -> anyhow::Result<()> {
+        self.set(
+            IdOf::ConfigDateLastPolledForReqdJobs.get_id(&self.key_prefix),
+            chrono::Utc::now(),
+        )
+        .await
+    }
+
+    async fn get<T: DeserializeOwned>(&self, key: Id, def: T) -> T {
+        self.inner
+            .get(&key.to_string())
+            .await
+            .map(|b| encoder::decode::<T>(&b).ok())
+            .flatten()
+            .unwrap_or_else(|| def)
+    }
+
+    async fn set<T: Serialize>(&self, key: Id, val: T) -> anyhow::Result<()> {
+        self.inner
+            .set(&key.to_string(), &encoder::encode(&val)?)
+            .await
     }
 }

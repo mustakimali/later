@@ -1,10 +1,12 @@
 use crate::{
+    commands,
     core::BgJobHandler,
     encoder,
-    models::{Job, RequeuedStage, Stage},
-    BackgroundJobServer, BackgroundJobServerPublisher, JobId,
+    models::{AmqpCommand, ChannelCommand},
+    BackgroundJobServer, BackgroundJobServerPublisher, UtcDateTime,
 };
 use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
+use async_std::channel::{Receiver, Sender};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 impl<C, H> BackgroundJobServer<C, H>
@@ -17,28 +19,36 @@ where
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
         let num_bg_workers = 5;
+        let (tx, rx) = async_std::channel::unbounded::<ChannelCommand>();
 
         // workers to process jobs (distributed)
         for id in 1..num_bg_workers {
             let amqp_address = publisher._amqp_address.clone();
             let routing_key = publisher.routing_key.clone();
             let handler = handler.clone();
+            let inproc_tx = tx.clone();
 
             workers.push(std::thread::spawn(move || {
-                start_distributed_job_worker(handler, id, &amqp_address, &routing_key)
+                start_distributed_job_worker(handler, id, &amqp_address, &routing_key, inproc_tx)
             }));
         }
 
-        // workers to poll jobs
-        let handler_for_poller = handler.clone();
+        let handler_for_ensure_ops = handler.clone();
         workers.push(std::thread::spawn(move || {
-            start_poller_reqd_jobs(handler_for_poller)
+            start_bg_worker_system_ops_ensure_ops_run_on_certain_interval(
+                handler_for_ensure_ops,
+                tx.clone(),
+            )
         }));
 
-        let handler_for_poller = handler.clone();
-        workers.push(std::thread::spawn(move || {
-            start_poller_delayed_jobs(handler_for_poller)
-        }));
+        for _ in 1..2 {
+            let rx_clone = rx.clone();
+            let handler_for_check_ops = handler.clone();
+
+            workers.push(std::thread::spawn(move || {
+                start_bg_worker_system_ops_inproc_cmd_to_amqp_cmd(handler_for_check_ops, rx_clone)
+            }));
+        }
 
         // allow some time for the workers to start up
         std::thread::sleep(Duration::from_millis(250));
@@ -66,7 +76,13 @@ where
     }
 }
 
-fn start_poller_reqd_jobs<C, H>(handler: Arc<H>) -> anyhow::Result<()>
+/// listens for commands on an in-process queue,
+/// then waits a few moments and publish/enqueue an amqp
+/// command to execute system operations (like polling for certain jobs etc.)
+fn start_bg_worker_system_ops_inproc_cmd_to_amqp_cmd<C, H>(
+    handler: Arc<H>,
+    rx: Receiver<ChannelCommand>,
+) -> anyhow::Result<()>
 where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
@@ -76,40 +92,31 @@ where
         .build()?;
 
     loop {
-        tracing::debug!("Polling reqd jobs");
+        let channel_command = rt
+            .block_on(rx.recv())
+            .expect("receive command from channel");
+        std::thread::sleep(Duration::from_secs(2));
 
-        let publisher = handler.get_publisher();
-        let mut iter = rt.block_on(publisher.storage.get_reqd_jobs())?;
-        while let Some(job_id_bytes) = rt.block_on(iter.next()) {
-            let job_id = encoder::decode::<JobId>(&job_id_bytes)?;
-
-            if let Some(job) = rt.block_on(publisher.storage.get_job(job_id)) {
-                if let Stage::Requeued(RequeuedStage {
-                    date: _,
-                    requeue_count,
-                }) = job.stage
-                {
-                    tracing::debug!("Job {}: Requeue #{}", job.id, requeue_count);
-
-                    let enqueued = job.transition();
-                    if let Err(_) = rt.block_on(publisher.save(&enqueued)) {
-                        continue;
-                    }
-
-                    if let Err(_) = rt.block_on(publisher.handle_job_enqueue_initial(enqueued)) {
-                        continue;
-                    }
-                }
+        match channel_command {
+            ChannelCommand::PollDelayedJobs => {
+                handler
+                    .get_publisher()
+                    .publish_amqp_command(AmqpCommand::PollDelayedJobs)?;
+            }
+            ChannelCommand::PollRequeuedJobs => {
+                handler
+                    .get_publisher()
+                    .publish_amqp_command(AmqpCommand::PollRequeuedJobs)?;
             }
         }
-
-        rt.block_on(publisher.storage.trim(iter))?;
-
-        std::thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn start_poller_delayed_jobs<C, H>(handler: Arc<H>) -> anyhow::Result<()>
+/// Every 10 secs, ensure some system operations are run - otherwise enqueue them
+fn start_bg_worker_system_ops_ensure_ops_run_on_certain_interval<C, H>(
+    handler: Arc<H>,
+    tx: Sender<ChannelCommand>,
+) -> anyhow::Result<()>
 where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
@@ -118,42 +125,46 @@ where
         .enable_all()
         .build()?;
 
+    std::thread::sleep(Duration::from_secs(3)); // wait for existing commands to be processed
+
     loop {
-        tracing::debug!("Polling delayed jobs");
+        let config = handler.get_publisher().storage.config();
 
-        let publisher = handler.get_publisher();
-        let mut iter = rt.block_on(publisher.storage.get_delayed_jobs())?;
+        enqueue_if(
+            &tx,
+            ChannelCommand::PollDelayedJobs,
+            rt.block_on(config.poll_delayed_jobs_last_run()),
+            10,
+        );
 
-        while let Some(bytes) = rt.block_on(iter.next()) {
-            let job_id = encoder::decode::<JobId>(&bytes)?;
+        enqueue_if(
+            &tx,
+            ChannelCommand::PollRequeuedJobs,
+            rt.block_on(config.poll_requeued_jobs_last_run()),
+            10,
+        );
 
-            if let Some(job) = rt.block_on(publisher.storage.get_job(job_id.clone())) {
-                if let Stage::Delayed(delay) = &job.stage.clone() {
-                    let mut requeue = false;
+        std::thread::sleep(Duration::from_secs(10));
+    }
 
-                    if delay.is_time() {
-                        tracing::debug!("Job {}: Waiting is finished", job.id);
+    // unreachable
 
-                        if let Err(_) = rt.block_on(publisher.handle_job_enqueue_initial(job)) {
-                            requeue = true;
-                        }
-                    } else {
-                        requeue = true;
-                    }
+    fn enqueue_if(
+        tx: &Sender<ChannelCommand>,
+        cmd: ChannelCommand,
+        last_run: UtcDateTime,
+        if_not_sec: i64,
+    ) {
+        let last_run_since = chrono::Utc::now() - last_run;
+        if last_run_since.num_seconds() > if_not_sec {
+            println!("Ops {} did not run for a while: Enqueuing", cmd);
 
-                    if requeue {
-                        rt.block_on(
-                            publisher
-                                .storage
-                                .save_job_id(&job_id, &Stage::Delayed(delay.clone())),
-                        )?;
-                    }
-                }
-            }
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let _ = rt.block_on(tx.send(cmd));
         }
-
-        rt.block_on(publisher.storage.trim(iter))?;
-        std::thread::sleep(Duration::from_secs(2)); // ToDo: configure
     }
 }
 
@@ -162,12 +173,17 @@ fn start_distributed_job_worker<C, H>(
     worker_id: i32,
     amqp_address: &str,
     routing_key: &str,
+    inproc_cmd_tx: Sender<ChannelCommand>,
 ) -> anyhow::Result<()>
 where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
     println!("[Worker#{}] Starting", worker_id);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+
     let mut connection = Connection::insecure_open(&amqp_address)?;
     let channel = connection.open_channel(None)?;
     let queue = channel.queue_declare(
@@ -186,8 +202,16 @@ where
     for (i, message) in consumer.receiver().iter().enumerate() {
         match message {
             amiquip::ConsumerMessage::Delivery(delivery) => {
-                match encoder::decode::<Job>(&delivery.body) {
-                    Ok(job) => handle_job(job, worker_id, i, handler.clone(), &consumer, delivery)?,
+                match encoder::decode::<AmqpCommand>(&delivery.body) {
+                    Ok(command) => {
+                        let _ = rt.block_on(commands::handle_amqp_command(
+                            command,
+                            worker_id,
+                            &handler,
+                            &inproc_cmd_tx,
+                        ));
+                        consumer.ack(delivery)?;
+                    }
                     Err(err) => {
                         println!(
                             "[Worker#{}] ({:>3}) Unknown message received [{} bytes]: {}",
@@ -208,78 +232,5 @@ where
     }
 
     println!("[Worker#{}] Ended", worker_id);
-    Ok(())
-}
-
-fn handle_job<C, H>(
-    job: Job,
-    worker_id: i32,
-    i: usize,
-    handler: Arc<H>,
-    consumer: &amiquip::Consumer,
-    delivery: amiquip::Delivery,
-) -> Result<(), anyhow::Error>
-where
-    C: Sync + Send,
-    H: BgJobHandler<C> + Sync + Send + 'static,
-{
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
-    let id = job.id.clone();
-    let ptype = job.payload_type.clone();
-    let payload = job.payload.clone();
-    println!(
-        "[Worker#{}] ({:>3}) Message received [Id: {}]",
-        worker_id, i, id
-    );
-    let publisher = handler.get_publisher();
-    let running_job = job.transition();
-    rt.block_on(publisher.save(&running_job))?;
-
-    match handler.dispatch(ptype, &payload) {
-        Ok(_) => {
-            // success
-            let success_job = running_job.transition_success()?;
-            let success_job_id = success_job.id.clone();
-            rt.block_on(publisher.save(&success_job))?;
-
-            rt.block_on(publisher.expire(&success_job, Duration::from_secs(3600)))?;
-
-            // enqueue waiting jobs
-            if let Some(waiting_jobs) = rt.block_on(
-                handler
-                    .get_publisher()
-                    .storage
-                    .get_continuation_job(&success_job),
-            ) {
-                for next in waiting_jobs {
-                    println!("Continuing {} -> {}", success_job_id, next.id);
-
-                    let next_job = next.transition(); // Waiting -> Enqueued
-                    rt.block_on(publisher.save(&next_job))?;
-
-                    rt.block_on(publisher.handle_job_enqueue_initial(next_job))?;
-                }
-
-                rt.block_on(
-                    handler
-                        .get_publisher()
-                        .storage
-                        .del_get_continuation_job(&success_job),
-                )?;
-            }
-        }
-        Err(e) => {
-            println!("Failed job {}: {}", running_job.id, e);
-
-            // failed, requeue
-            let reqd_job = running_job.transition_req()?;
-            rt.block_on(handler.get_publisher().save(&reqd_job))?;
-            // requeued jobs get polled later ...
-        }
-    }
-    consumer.ack(delivery)?;
     Ok(())
 }

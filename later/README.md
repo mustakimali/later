@@ -17,7 +17,7 @@ serde = "1.0"
 
 ### 2. Define some types to use as a payload to the background jobs
 
-```rust
+```ignore
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)] // <- Required derives
@@ -32,7 +32,7 @@ pub struct SendEmail {
 
 ### 3. Generate the stub
 
-```rust
+```ignore
 later::background_job! {
     struct Jobs {
         // Use the format
@@ -52,7 +52,7 @@ This generates two types
 
 For `struct Jobs` a type `JobsBuilder` will be generated. Use this to bootstrap the server.
 
-```rust
+```ignore
 // bootstrap the server
 let job_ctx = JobContext {};
 let ctx = MyContext{ /*..*/ };                  // Any context to pass onto the handlers
@@ -100,7 +100,7 @@ fn handle_send_email(
 
 Fire and forget jobs are executed only once and executed by an available worker almost immediately.
 
-```rust
+```ignore
 ctx.enqueue(SendEmail{
     address: "hello@rust-lang.org".to_string(),
     body: "You rock!".to_string() 
@@ -112,7 +112,7 @@ ctx.enqueue(SendEmail{
 
 One or many jobs are chained together to create an workflow. Child jobs are executed **only when parent job has been finished**.
 
-```rust
+```ignore
 let email_welcome = ctx.enqueue(SendEmail{
     address: "customer@example.com".to_string(),
     body: "Creating your account!".to_string() 
@@ -131,7 +131,7 @@ let email_confirmation = ctx.enqueue_continue(create_account, SendEmail{
 
 Just like fire and forget jobs that starts after a certain interval.
 
-```rust
+```ignore
 // delay
 ctx.enqueue_delayed(SendEmail{
     address: "hello@rust-lang.org".to_string(),

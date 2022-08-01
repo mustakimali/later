@@ -1,11 +1,12 @@
 use crate::core::JobParameter;
-use crate::models::Job;
+use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
 use crate::{encoder, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use amiquip::{Connection, Exchange, Publish};
 use anyhow::Context;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ impl BackgroundJobServerPublisher {
         parent_job_id: JobId,
         message: impl JobParameter,
     ) -> anyhow::Result<JobId> {
-        self.enqueue_internal(message, Some(parent_job_id), None)
+        self.enqueue_internal(message, Some(parent_job_id), None, None)
             .await
     }
 
@@ -49,6 +50,7 @@ impl BackgroundJobServerPublisher {
 
         self.enqueue_delayed_at(message, enqueue_time).await
     }
+
     pub async fn enqueue_delayed_at(
         &self,
         message: impl JobParameter,
@@ -57,11 +59,22 @@ impl BackgroundJobServerPublisher {
         if time <= chrono::Utc::now() {
             return Err(anyhow::anyhow!("Time must be in the future"));
         }
-        self.enqueue_internal(message, None, Some(time)).await
+        self.enqueue_internal(message, None, Some(time), None).await
+    }
+
+    pub async fn enqueue_recurring(
+        &self,
+        message: impl JobParameter,
+        cron: String,
+    ) -> anyhow::Result<JobId> {
+        let cron_schedule =
+            cron::Schedule::from_str(&cron).context("error parsing cron expression")?;
+        self.enqueue_internal(message, None, None, Some(cron_schedule))
+            .await
     }
 
     pub async fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
-        self.enqueue_internal(message, None, None).await
+        self.enqueue_internal(message, None, None, None).await
     }
 
     async fn enqueue_internal(
@@ -69,6 +82,7 @@ impl BackgroundJobServerPublisher {
         message: impl JobParameter,
         parent_job_id: Option<JobId>,
         delay_until: Option<UtcDateTime>,
+        cron_schedule: Option<cron::Schedule>,
     ) -> anyhow::Result<JobId> {
         let id = uuid::Uuid::new_v4().to_string();
 
@@ -163,16 +177,22 @@ impl BackgroundJobServerPublisher {
             Stage::Enqueued(_) => {
                 println!("Enqueue job {}", job.id);
 
-                let message_bytes = encoder::encode(job)?;
-                let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-                let exchange = Exchange::direct(&channel);
-
-                exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
+                self.publish_amqp_command(AmqpCommand::ExecuteJob(job))?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
                 unreachable!("stage is handled in consumer")
             }
         }
+
+        Ok(())
+    }
+
+    pub(crate) fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
+        let message_bytes = encoder::encode(cmd)?;
+        let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
+        let exchange = Exchange::direct(&channel);
+
+        exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
 
         Ok(())
     }

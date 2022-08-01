@@ -23,6 +23,7 @@ pub mod encoder;
 mod id;
 mod models;
 mod persist;
+mod commands;
 pub mod storage;
 
 pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;

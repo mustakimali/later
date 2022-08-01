@@ -1,9 +1,27 @@
+use std::fmt::Display;
+
 use crate::{JobId, UtcDateTime};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case", tag = "ty")]
-pub(crate) enum MqMessage {
+pub(crate) enum AmqpCommand {
     PollDelayedJobs,
+    PollRequeuedJobs,
+    ExecuteJob(Job),
+}
+
+pub(crate) enum ChannelCommand {
+    PollDelayedJobs,
+    PollRequeuedJobs,
+}
+
+impl Display for ChannelCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ChannelCommand::PollDelayedJobs => "PollDelayedJobs",
+            ChannelCommand::PollRequeuedJobs => "PollRequeuedJobs",
+        })
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
