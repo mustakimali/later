@@ -89,7 +89,7 @@ where
                     requeue_count,
                 }) = job.stage
                 {
-                    println!("Job {}: Requeue #{}", job.id, requeue_count);
+                    tracing::debug!("Job {}: Requeue #{}", job.id, requeue_count);
 
                     let enqueued = job.transition();
                     if let Err(_) = rt.block_on(publisher.save(&enqueued)) {
@@ -119,7 +119,7 @@ where
         .build()?;
 
     loop {
-        println!("Polling delayed jobs");
+        tracing::debug!("Polling delayed jobs");
 
         let publisher = handler.get_publisher();
         let mut iter = rt.block_on(publisher.storage.get_delayed_jobs())?;
@@ -129,16 +129,24 @@ where
 
             if let Some(job) = rt.block_on(publisher.storage.get_job(job_id.clone())) {
                 if let Stage::Delayed(delay) = &job.stage.clone() {
+                    let mut requeue = false;
+
                     if delay.is_time() {
-                        println!("Job {}: Waiting is finished", job.id);
+                        tracing::debug!("Job {}: Waiting is finished", job.id);
 
                         if let Err(_) = rt.block_on(publisher.handle_job_enqueue_initial(job)) {
-                            rt.block_on(
-                                publisher
-                                    .storage
-                                    .save_job_id(&job_id, &Stage::Delayed(delay.clone())),
-                            )?;
+                            requeue = true;
                         }
+                    } else {
+                        requeue = true;
+                    }
+
+                    if requeue {
+                        rt.block_on(
+                            publisher
+                                .storage
+                                .save_job_id(&job_id, &Stage::Delayed(delay.clone())),
+                        )?;
                     }
                 }
             }

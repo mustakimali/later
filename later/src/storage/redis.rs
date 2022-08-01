@@ -207,19 +207,23 @@ fn get_scan_item_key(range_key: &str, idx: usize) -> String {
 }
 
 #[cfg(test)]
-mod test {
+mod test_redis {
 
     use uuid::Uuid;
 
     use super::*;
 
+    async fn create_client() -> Redis {
+        Redis::new("redis://127.0.0.1/")
+            .await
+            .expect("connect to redis")
+    }
+
     #[tokio::test]
     async fn basic() {
         let data = uuid::Uuid::new_v4().to_string();
         let my_data = data.as_bytes();
-        let storage = Redis::new("redis://127.0.0.1/")
-            .await
-            .expect("connect to redis");
+        let storage = create_client().await;
         storage.set("key", my_data).await.unwrap();
 
         let result = storage.get("key").await.unwrap();
@@ -230,9 +234,7 @@ mod test {
     async fn range_basic() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/")
-            .await
-            .expect("connect to redis");
+        let storage = create_client().await;
 
         for _ in 0..10 {
             storage
@@ -248,12 +250,68 @@ mod test {
     }
 
     #[tokio::test]
+    async fn range_basic_2_items() {
+        let key = format!("key-{}", Uuid::new_v4().to_string());
+
+        let storage = create_client().await;
+
+        storage
+            .push(&key, "item-1".to_string().as_bytes())
+            .await
+            .unwrap();
+
+        storage
+            .push(&key, "item-2".to_string().as_bytes())
+            .await
+            .unwrap();
+
+        let mut scan_result = storage.scan_range(&key).await;
+        let count = scan_result.count().await;
+
+        assert_eq!(2, count);
+
+        let mut read_items = Vec::default();
+        let mut scan_result = storage.scan_range(&key).await;
+        while let Some(item) = scan_result.next().await {
+            read_items.push(String::from_utf8(item).unwrap());
+        }
+
+        assert_eq!(2, read_items.len());
+        assert_eq!("item-1", read_items[0]);
+        assert_eq!("item-2", read_items[1]);
+    }
+
+    #[tokio::test]
+    async fn range_basic_1_item() {
+        let key = format!("key-{}", Uuid::new_v4().to_string());
+
+        let storage = create_client().await;
+
+        storage
+            .push(&key, "item-1".to_string().as_bytes())
+            .await
+            .unwrap();
+
+        let mut scan_result = storage.scan_range(&key).await;
+        let count = scan_result.count().await;
+
+        assert_eq!(1, count);
+
+        let mut read_items = Vec::default();
+        let mut scan_result = storage.scan_range(&key).await;
+        while let Some(item) = scan_result.next().await {
+            read_items.push(String::from_utf8(item).unwrap());
+        }
+
+        assert_eq!(1, read_items.len());
+        assert_eq!("item-1", read_items[0]);
+    }
+
+    #[tokio::test]
     async fn range_trim() {
         let key = format!("key-{}", Uuid::new_v4().to_string());
 
-        let storage = Redis::new("redis://127.0.0.1/")
-            .await
-            .expect("connect to redis");
+        let storage = create_client().await;
 
         for idx in 0..100 {
             storage

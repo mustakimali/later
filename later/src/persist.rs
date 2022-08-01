@@ -1,7 +1,7 @@
 use crate::{
     encoder::{self},
     id::{Id, IdOf},
-    models::{Job, RequeuedStage, Stage, StageName, WaitingStage, DelayedStage},
+    models::{DelayedStage, Job, RequeuedStage, Stage, StageName, WaitingStage},
     storage::{Storage, StorageIter},
     JobId,
 };
