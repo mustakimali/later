@@ -37,6 +37,7 @@ impl Display for JobId {
     }
 }
 
+// ToDo: Remove H - use Box<dyn BgJobHandler<C>>
 pub struct BackgroundJobServer<C, H>
 where
     H: BgJobHandler<C> + Sync + Send,
