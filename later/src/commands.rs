@@ -144,7 +144,7 @@ where
     let running_job = job.transition();
     publisher.save(&running_job).await?;
 
-    match handler.dispatch(ptype, &payload) {
+    match handler.dispatch(ptype, &payload).await {
         Ok(_) => {
             // success
             let success_job = running_job.transition_success()?;

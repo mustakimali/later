@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::BackgroundJobServerPublisher;
@@ -12,9 +13,10 @@ where
     fn get_ptype(&self) -> String;
 }
 
+#[async_trait]
 // Marker trait used to decorate handles
 pub trait BgJobHandler<C> {
     fn get_ctx(&self) -> &C;
     fn get_publisher(&self) -> &BackgroundJobServerPublisher;
-    fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()>;
+    async fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()>;
 }

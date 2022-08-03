@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-later::background_job! {
-    struct DeriveHandler {
-        sample_message: SampleMessage,
-        another_sample_message: AnotherSampleMessage,
-    }
-}
+// later::background_job! {
+//     struct DeriveHandler {
+//         sample_message: SampleMessage,
+//         another_sample_message: AnotherSampleMessage,
+//     }
+// }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SampleMessage {

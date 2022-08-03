@@ -1,16 +1,19 @@
+use std::process::Output;
+
 use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
 
 struct AppContext {
-    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
+    //jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext, std::future::Future<Output = anyhow::Result<()>>>>,
 }
 
 impl AppContext {
     pub async fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        self.jobs.enqueue(msg).await
+        //self.jobs.enqueue(msg).await
+        todo!()
     }
 }
 
-fn handle_sample_message(
+async fn handle_sample_message(
     _ctx: &DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
@@ -18,13 +21,16 @@ fn handle_sample_message(
 
     Ok(())
 }
-fn handle_another_sample_message(
+
+async fn handle_another_sample_message(
     _ctx: &DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let _ = _ctx.enqueue(AnotherSampleMessage {
-        txt: "test".to_string(),
-    });
+    let _ = _ctx
+        .enqueue(AnotherSampleMessage {
+            txt: "test".to_string(),
+        })
+        .await;
 
     println!("On Handle handle_another_sample_message: {:?}", payload);
 
@@ -42,12 +48,14 @@ pub async fn test_non_generated() {
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    .with_sample_message_handler(handle_sample_message)
-    .with_another_sample_message_handler(handle_another_sample_message)
+    //.with_sample_message_handler(handle_sample_message)
+    //.with_another_sample_message_handler(handle_another_sample_message)
+    .with_sample_message_handler(|ctx, p| Box::new(async { Ok(()) }))
+    .with_another_sample_message_handler(|ctx, p| Box::new(async { Ok(()) }))
     .build()
     .expect("start bg server");
 
-    let _ctx = AppContext { jobs: bjs };
+    //let _ctx = AppContext { jobs: bjs };
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -65,6 +73,7 @@ pub struct JobContext {}
 
 /* GENERATED */
 
+type BoxedFuture = Box<dyn std::future::Future<Output = anyhow::Result<()>>>;
 use serde::{Deserialize, Serialize};
 
 pub struct DeriveHandlerContext<C> {
@@ -89,16 +98,13 @@ where
     amqp_address: String,
     storage: Box<dyn ::later::storage::Storage>,
     sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> anyhow::Result<()> + Send + Sync>,
+        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> BoxedFuture + Send + Sync>,
     >,
     another_sample_message: ::core::option::Option<
-        Box<
-            dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> anyhow::Result<()>
-                + Send
-                + Sync,
-        >,
+        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> BoxedFuture + Send + Sync>,
     >,
 }
+
 impl<C> DeriveHandlerBuilder<C>
 where
     C: Sync + Send + 'static,
@@ -126,10 +132,7 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&DeriveHandlerContext<C>, SampleMessage) -> anyhow::Result<()>
-            + Send
-            + Sync
-            + 'static,
+        M: Fn(&DeriveHandlerContext<C>, SampleMessage) -> BoxedFuture + Send + Sync + 'static,
         C: Sync + Send + 'static,
     {
         self.sample_message = Some(Box::new(handler));
@@ -139,10 +142,7 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_another_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> anyhow::Result<()>
-            + Send
-            + Sync
-            + 'static,
+        M: Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> BoxedFuture + Send + Sync + 'static,
         C: Sync + Send + 'static,
     {
         self.another_sample_message = Some(Box::new(handler));
@@ -193,32 +193,32 @@ impl ::later::core::JobParameter for AnotherSampleMessage {
         "another_sample_message".into()
     }
 }
+
 pub struct DeriveHandler<C>
 where
     C: Sync + Send + 'static,
 {
     pub ctx: DeriveHandlerContext<C>,
     pub sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> anyhow::Result<()> + Send + Sync>,
+        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> BoxedFuture + Send + Sync>,
     >,
     pub another_sample_message: ::core::option::Option<
-        Box<
-            dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> anyhow::Result<()>
-                + Send
-                + Sync,
-        >,
+        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> BoxedFuture + Send + Sync>,
     >,
 }
+
+#[async_trait]
 impl<C> ::later::core::BgJobHandler<C> for DeriveHandler<C>
 where
     C: Sync + Send + 'static,
 {
-    fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
+    async fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
         match ptype.as_str() {
             "sample_message" => {
                 let payload = SampleMessage::from_bytes(payload);
                 if let Some(handler) = &self.sample_message {
-                    (handler)(&self.ctx, payload)
+                    let r = Box::new((*(handler)(&self.ctx, payload)).await);
+                    todo!()
                 } else {
                     unimplemented!()
                 }
@@ -226,7 +226,7 @@ where
             "another_sample_message" => {
                 let payload = AnotherSampleMessage::from_bytes(payload);
                 if let Some(handler) = &self.another_sample_message {
-                    (handler)(&self.ctx, payload)
+                    (*(handler)(&self.ctx, payload)).await
                 } else {
                     unimplemented!()
                 }
