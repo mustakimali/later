@@ -48,10 +48,23 @@ pub async fn test_non_generated() {
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    //.with_sample_message_handler(handle_sample_message)
-    //.with_another_sample_message_handler(handle_another_sample_message)
-    .with_sample_message_handler(|ctx, p| async { Ok(()) })
-    .with_another_sample_message_handler(|ctx, p| async { Ok(()) })
+    
+    /*
+    If T take one generic F: (.., ..) -> Future<Output = anyhow::Result<()>>
+    Then I must provider the same closure for each of the with_.._handler(..)
+
+    If I take generic F: (.., ..) -> Box<dyn Future<Output = anyhow::Result<()>>
+    Then when I execute the handler, I am unable to .await because the size isn't known at compile time
+
+    If I take n generic F1..Fn,
+    I am able to pass multiple closure, but
+    I am not able to pass the function handle_sample_message and
+    I am unable to skip any `with_.._handler` function as the Fx can't be inferred
+     */
+    .with_sample_message_handler(handle_sample_message)
+    .with_another_sample_message_handler(handle_another_sample_message)
+    //.with_sample_message_handler(|ctx, p| async { Ok(()) })
+    //.with_another_sample_message_handler(|ctx, p| async { Ok(()) })
     .build()
     .expect("start bg server");
 
