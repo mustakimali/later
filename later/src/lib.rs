@@ -25,6 +25,7 @@ mod models;
 mod persist;
 mod commands;
 pub mod storage;
+mod metrics;
 
 pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
 

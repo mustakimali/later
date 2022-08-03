@@ -10,6 +10,16 @@ pub(crate) enum AmqpCommand {
     ExecuteJob(Job),
 }
 
+impl AmqpCommand {
+    pub fn get_type(&self) -> String {
+        match self {
+            AmqpCommand::PollDelayedJobs => "PollDelayedJobs".to_string(),
+            AmqpCommand::PollRequeuedJobs => "PollRequeuedJobs".to_string(),
+            AmqpCommand::ExecuteJob(j) => format!("Job-{}", j.payload_type),
+        }
+    }
+}
+
 pub(crate) enum ChannelCommand {
     PollDelayedJobs,
     PollRequeuedJobs,

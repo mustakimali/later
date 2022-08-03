@@ -4,7 +4,7 @@ use async_std::channel::Sender;
 
 use crate::{
     core::BgJobHandler,
-    encoder,
+    encoder, metrics,
     models::{AmqpCommand, ChannelCommand, Job, RequeuedStage, Stage},
     JobId,
 };
@@ -19,9 +19,12 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    let ty = command.get_type();
+    metrics::COUNTER.commands_all.with_label_values(&[ty.as_str()]).inc();
+
     Ok(match command {
         AmqpCommand::PollDelayedJobs => {
-            println!("[Worker#{}] amqp_command: PollDelayedJobs", worker_id);
+            tracing::debug!("[Worker#{}] amqp_command: PollDelayedJobs", worker_id);
 
             let _ = handle_poll_delayed_job_command(handler.clone()).await;
             let _ = handler
@@ -33,7 +36,7 @@ where
             let _ = inproc_cmd_tx.send(ChannelCommand::PollDelayedJobs).await;
         }
         AmqpCommand::PollRequeuedJobs => {
-            println!("[Worker#{}] amqp_command: PollRequeuedJobs", worker_id);
+            tracing::debug!("[Worker#{}] amqp_command: PollRequeuedJobs", worker_id);
 
             let _ = handle_poll_requeued_job_command(handler.clone()).await;
             let _ = handler
@@ -45,7 +48,9 @@ where
             let _ = inproc_cmd_tx.send(ChannelCommand::PollRequeuedJobs).await;
         }
         AmqpCommand::ExecuteJob(job) => {
-            println!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
+            metrics::COUNTER.jobs_all.with_label_values(&[ty.as_str()]).inc();
+
+            tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
             handle_job(job, handler.clone()).await?;
         }

@@ -21,19 +21,21 @@ fn handle_another_sample_message(
     _ctx: &DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    // Todo: async
+    // let rt = tokio::runtime::Builder::new_current_thread()
+    //     .enable_all()
+    //     .build()?;
 
-    let id = rt.block_on(_ctx.enqueue(SampleMessage {
-        txt: "test".to_string(),
-    }))?;
-    rt.block_on(_ctx.enqueue_continue(
-        id.clone(),
-        SampleMessage {
-            txt: format!("Continuation of job {}", id),
-        },
-    ))?;
+    // let id = rt.block_on(_ctx.enqueue(SampleMessage {
+    //     txt: "test".to_string(),
+    // }))?;
+    // let f = _ctx.enqueue_continue(
+    //     id.clone(),
+    //     SampleMessage {
+    //         txt: format!("Continuation of job {}", id),
+    //     },
+    // );
+    
 
     println!(
         "On Handle handle_another_sample_message: {:?}, enqueued: {}",
@@ -53,6 +55,11 @@ async fn hello(state: &State<AppContext>) -> String {
     let msg = AnotherSampleMessage { txt: id };
     state.jobs.enqueue(msg).await.expect("Enqueue Job");
     "Hello, world!".to_string()
+}
+
+#[get("/metrics")]
+async fn metrics(state: &State<AppContext>) -> String {
+    state.jobs.get_metrics().expect("metrics")
 }
 
 #[launch]
@@ -77,5 +84,7 @@ async fn rocket() -> _ {
     #[cfg(debug_assertions)]
     non_generated::test_non_generated().await;
 
-    rocket::build().mount("/", routes![hello]).manage(ctx)
+    rocket::build()
+        .mount("/", routes![hello, metrics])
+        .manage(ctx)
 }

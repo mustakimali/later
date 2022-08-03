@@ -3,7 +3,7 @@ use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, BackgroundJobServerPublisher, JobId, UtcDateTime};
+use crate::{encoder, BackgroundJobServerPublisher, JobId, UtcDateTime, metrics};
 use amiquip::{Connection, Exchange, Publish};
 use anyhow::Context;
 use std::str::FromStr;
@@ -28,6 +28,10 @@ impl BackgroundJobServerPublisher {
             channel: Arc::new(Mutex::new(channel)),
             routing_key: routing_key,
         })
+    }
+
+    pub fn get_metrics(&self) -> anyhow::Result<String> {
+        metrics::COUNTER.output()
     }
 
     pub async fn enqueue_continue(
