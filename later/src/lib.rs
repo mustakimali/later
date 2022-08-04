@@ -14,6 +14,7 @@ use std::{
 };
 
 pub use anyhow;
+pub use futures;
 pub use later_derive::background_job;
 
 mod bg_job_server;

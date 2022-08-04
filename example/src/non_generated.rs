@@ -1,4 +1,4 @@
-use std::process::Output;
+use std::{future::Future, process::Output};
 
 use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
 
@@ -13,25 +13,27 @@ impl AppContext {
     }
 }
 
-async fn handle_sample_message(
-    _ctx: &DeriveHandlerContext<JobContext>,
+fn handle_sample_message(
+    _ctx: &'static DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
-) -> anyhow::Result<()> {
-    println!("On Handle handle_sample_message: {:?}", payload);
+) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
+    Box::pin(async {
+        println!("On Handle handle_sample_message: {:?}", payload);
 
-    Ok(())
+        let _ = _ctx
+            .enqueue(AnotherSampleMessage {
+                txt: "test".to_string(),
+            })
+            .await;
+
+        Ok(())
+    })
 }
 
 async fn handle_another_sample_message(
     _ctx: &DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let _ = _ctx
-        .enqueue(AnotherSampleMessage {
-            txt: "test".to_string(),
-        })
-        .await;
-
     println!("On Handle handle_another_sample_message: {:?}", payload);
 
     Ok(())
@@ -48,21 +50,18 @@ pub async fn test_non_generated() {
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    
     /*
     If T take one generic F: (.., ..) -> Future<Output = anyhow::Result<()>>
     Then I must provider the same closure for each of the with_.._handler(..)
-
     If I take generic F: (.., ..) -> Box<dyn Future<Output = anyhow::Result<()>>
     Then when I execute the handler, I am unable to .await because the size isn't known at compile time
-
     If I take n generic F1..Fn,
     I am able to pass multiple closure, but
     I am not able to pass the function handle_sample_message and
     I am unable to skip any `with_.._handler` function as the Fx can't be inferred
      */
-    .with_sample_message_handler(handle_sample_message)
-    .with_another_sample_message_handler(handle_another_sample_message)
+    .with_sample_message_handler(Box::new(handle_sample_message))
+    //.with_another_sample_message_handler(Box::new(handle_another_sample_message))
     //.with_sample_message_handler(|ctx, p| async { Ok(()) })
     //.with_another_sample_message_handler(|ctx, p| async { Ok(()) })
     .build()
@@ -87,6 +86,8 @@ pub struct JobContext {}
 /* GENERATED */
 
 use serde::{Deserialize, Serialize};
+//type PinnedBoxFut = std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>>>>;
+type PinnedBoxFut = later::futures::future::BoxFuture<'static, anyhow::Result<()>>;
 
 pub struct DeriveHandlerContext<C> {
     job: ::later::BackgroundJobServerPublisher,
@@ -101,29 +102,25 @@ impl<C> std::ops::Deref for DeriveHandlerContext<C> {
     }
 }
 
-pub struct DeriveHandlerBuilder<C, F1, F2>
+pub struct DeriveHandlerBuilder<C>
 where
     C: Sync + Send + 'static,
-    F1: std::future::Future<Output = anyhow::Result<()>>,
-    F2: std::future::Future<Output = anyhow::Result<()>>,
 {
     ctx: C,
     id: String,
     amqp_address: String,
     storage: Box<dyn ::later::storage::Storage>,
     sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> F1 + Send + Sync>,
+        Box<dyn Fn(&'static DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Sync + Send>,
     >,
     another_sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> F2 + Send + Sync>,
+        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut + Sync + Send>,
     >,
 }
 
-impl<C, F1, F2> DeriveHandlerBuilder<C, F1, F2>
+impl<C> DeriveHandlerBuilder<C>
 where
     C: Sync + Send + 'static,
-    F1: std::future::Future<Output = anyhow::Result<()>> + Send + Sync + 'static,
-    F2: std::future::Future<Output = anyhow::Result<()>> + Send + Sync + 'static,
 {
     pub fn new(
         context: C,
@@ -148,7 +145,7 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&DeriveHandlerContext<C>, SampleMessage) -> F1 + Send + Sync + 'static,
+        M: Fn(&'static DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Send + Sync + 'static,
         C: Sync + Send + 'static,
     {
         self.sample_message = Some(Box::new(handler));
@@ -158,13 +155,16 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_another_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> F2 + Send + Sync + 'static,
+        M: Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut
+            + Send
+            + Sync
+            + 'static,
         C: Sync + Send + 'static,
     {
         self.another_sample_message = Some(Box::new(handler));
         self
     }
-    pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, DeriveHandler<C, F1, F2>>> {
+    pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, DeriveHandler<C>>> {
         let publisher = ::later::BackgroundJobServerPublisher::new(
             self.id.clone(),
             self.amqp_address.clone(),
@@ -210,27 +210,23 @@ impl ::later::core::JobParameter for AnotherSampleMessage {
     }
 }
 
-pub struct DeriveHandler<C, F1, F2>
+pub struct DeriveHandler<C>
 where
     C: Sync + Send + 'static,
-    F1: std::future::Future<Output = anyhow::Result<()>>,
-    F2: std::future::Future<Output = anyhow::Result<()>>,
 {
     pub ctx: DeriveHandlerContext<C>,
     pub sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> F1 + Send + Sync>,
+        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Send + Sync>,
     >,
     pub another_sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> F2 + Send + Sync>,
+        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut + Send + Sync>,
     >,
 }
 
 #[async_trait]
-impl<C, F1, F2> ::later::core::BgJobHandler<C> for DeriveHandler<C, F1, F2>
+impl<C> ::later::core::BgJobHandler<C> for DeriveHandler<C>
 where
     C: Sync + Send + 'static,
-    F1: std::future::Future<Output = anyhow::Result<()>> + Send + Sync + 'static,
-    F2: std::future::Future<Output = anyhow::Result<()>> + Send + Sync + 'static,
 {
     async fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
         match ptype.as_str() {
