@@ -6,8 +6,8 @@ use later::{storage::redis::Redis, BackgroundJobServer};
 use rocket::State;
 
 mod bg;
-#[allow(dead_code)]
-mod non_generated;
+//#[allow(dead_code)]
+//mod non_generated;
 
 // fn handle_sample_message(
 //     _ctx: &DeriveHandlerContext<JobContext>,

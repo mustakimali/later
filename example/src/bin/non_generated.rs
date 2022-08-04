@@ -1,24 +1,21 @@
 use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
 use macro_generated::*;
+use rocket::State;
 use serde::{Deserialize, Serialize};
+#[macro_use]
+extern crate rocket;
 
 struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
-impl AppContext {
-    pub async fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        self.jobs.enqueue(msg).await
-    }
-}
-
 async fn handle_sample_message(
-    _ctx: DeriveHandlerContext<JobContext>,
+    ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
-    let _ = _ctx
+    let _ = ctx
         .enqueue(AnotherSampleMessage {
             txt: "test".to_string(),
         })
@@ -36,7 +33,27 @@ async fn handle_another_sample_message(
     Ok(())
 }
 
-pub async fn test_non_generated() {
+#[get("/")]
+async fn hello(state: &State<AppContext>) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let msg = SampleMessage { txt: id.clone() };
+    let parent_id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
+    let msg2 = AnotherSampleMessage { txt: id };
+    state
+        .jobs
+        .enqueue_continue(parent_id, msg2)
+        .await
+        .expect("Enqueue Job");
+    "Hello, world!".to_string()
+}
+
+#[get("/metrics")]
+async fn metrics(state: &State<AppContext>) -> String {
+    state.jobs.get_metrics().expect("metrics")
+}
+
+#[launch]
+async fn rocket() -> _ {
     let job_ctx = JobContext {};
     let storage = Redis::new("redis://127.0.0.1/")
         .await
@@ -52,7 +69,11 @@ pub async fn test_non_generated() {
     .build()
     .expect("start bg server");
 
-    let _ctx = AppContext { jobs: bjs };
+    let ctx = AppContext { jobs: bjs };
+
+    rocket::build()
+        .mount("/", routes![hello, metrics])
+        .manage(ctx)
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -165,7 +186,7 @@ mod macro_generated {
             handler: HandlerFunc,
         ) -> ::later::futures::future::BoxFuture<'static, Fut::Output>
         where
-            HandlerFunc: Fn(DeriveHandlerContext<C>, Payload) -> Fut + Send + 'static,
+            HandlerFunc: FnOnce(DeriveHandlerContext<C>, Payload) -> Fut + Send + 'static,
             Payload: ::later::core::JobParameter + Send + 'static,
             Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
         {
@@ -173,8 +194,7 @@ mod macro_generated {
                 let ctx = DeriveHandlerContext {
                     inner: arc_ctx.clone(),
                 };
-                let fut = handler(ctx, payload);
-                fut.await
+                handler(ctx, payload).await
             })
         }
 
