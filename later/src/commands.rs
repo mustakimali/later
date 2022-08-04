@@ -20,7 +20,10 @@ where
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
     let ty = command.get_type();
-    metrics::COUNTER.commands_all.with_label_values(&[ty.as_str()]).inc();
+    metrics::COUNTER
+        .commands_all
+        .with_label_values(&[ty.as_str()])
+        .inc();
 
     Ok(match command {
         AmqpCommand::PollDelayedJobs => {
@@ -48,7 +51,10 @@ where
             let _ = inproc_cmd_tx.send(ChannelCommand::PollRequeuedJobs).await;
         }
         AmqpCommand::ExecuteJob(job) => {
-            metrics::COUNTER.jobs_all.with_label_values(&[ty.as_str()]).inc();
+            metrics::COUNTER
+                .jobs_all
+                .with_label_values(&[ty.as_str()])
+                .inc();
 
             tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
@@ -144,7 +150,7 @@ where
     let running_job = job.transition();
     publisher.save(&running_job).await?;
 
-    match handler.dispatch(ptype, &payload) {
+    match handler.dispatch(ptype, &payload).await {
         Ok(_) => {
             // success
             let success_job = running_job.transition_success()?;

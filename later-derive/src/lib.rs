@@ -31,46 +31,62 @@ impl ToTokens for TraitImpl {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = self.iden.clone();
         let context_name = format_ident!("{}Context", name);
-        let context_name2 = context_name.clone();
+        let inner_type_name = format_ident!("{}Inner", context_name);
 
         let impl_message = self.requests.iter().cloned().map(ImplMessage);
         let public_fields = self
             .requests
             .iter()
             .cloned()
-            .map(|req| FieldItem::new(req, &context_name, OutputType::FieldPub));
+            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::FieldPub));
         let fields_for_builder = self
             .requests
             .iter()
             .cloned()
-            .map(|req| FieldItem::new(req, &context_name, OutputType::FieldPrivate));
+            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::FieldPrivate));
         let uninitialized_fields = self
             .requests
             .iter()
             .cloned()
-            .map(|req| FieldItem::new(req, &context_name, OutputType::UninitializedField));
+            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::UninitializedField));
         let builder_methods = self
             .requests
             .iter()
             .cloned()
-            .map(|req| FieldItem::new(req, &context_name, OutputType::BuilderMethod));
+            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::BuilderMethod));
         let builder_assignments = self
             .requests
             .iter()
             .cloned()
-            .map(|req| FieldItem::new(req, &context_name, OutputType::Assignment));
+            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::Assignment));
 
         let match_items = self.requests.iter().cloned().map(MatchArm);
 
         let builder_type_name = format_ident!("{}Builder", name);
 
         tokens.extend(quote! {
-            pub struct #context_name<C> {
-                pub job: ::later::BackgroundJobServerPublisher,
-                pub app: C,
+
+            pub struct #context_name<C: Send + Sync> { // Deref to `inner`
+                inner: std::sync::Arc<#inner_type_name<C>>,
             }
 
-            impl<C> std::ops::Deref for #context_name<C> {
+            pub struct #inner_type_name<C> { // Deref to `job`
+                job: ::later::BackgroundJobServerPublisher,
+                app: C,
+            }
+
+            impl<C> std::ops::Deref for #context_name<C>
+            where
+                C: Send + Sync,
+            {
+                type Target = #inner_type_name<C>;
+
+                fn deref(&self) -> &Self::Target {
+                    &self.inner
+                }
+            }
+
+            impl<C> std::ops::Deref for #inner_type_name<C> {
                 type Target = ::later::BackgroundJobServerPublisher;
 
                 fn deref(&self) -> &Self::Target {
@@ -79,7 +95,10 @@ impl ToTokens for TraitImpl {
             }
 
             // Build the stub
-            pub struct #builder_type_name<C> {
+            pub struct #builder_type_name<C>
+            where
+                C: Sync + Send + 'static,
+            {
                 ctx: C,
                 id: String,
                 amqp_address: String,
@@ -88,7 +107,10 @@ impl ToTokens for TraitImpl {
                 #(#fields_for_builder)*
             }
 
-            impl<C> #builder_type_name<C> {
+            impl<C> #builder_type_name<C>
+            where
+                C: Sync + Send + 'static,
+                {
                 pub fn new(context: C, id: String, amqp_address: String, storage: Box<dyn ::later::storage::Storage>) -> Self {
                     Self {
                         ctx: context,
@@ -100,23 +122,43 @@ impl ToTokens for TraitImpl {
                     }
                 }
 
+                /// Accept a simplified and ergonomic async function handler
+                ///     Fn(Ctx<C>, Payload) -> impl Future<Output = anyhow::Result<()>>
+                /// and map this to the complex/nasty stuff required internally to make the compiler happy.
+                ///     Fn(Arc<CtxWrapper<C>>, Payload) -> Pin<Box<Future<Output = anyhow::Result<()>>>
+                fn wrap_complex_handler<Payload, HandlerFunc, Fut>(
+                    arc_ctx: std::sync::Arc<#inner_type_name<C>>,
+                    payload: Payload,
+                    handler: HandlerFunc,
+                ) -> ::later::futures::future::BoxFuture<'static, Fut::Output>
+                where
+                    HandlerFunc: FnOnce(#context_name<C>, Payload) -> Fut + Send + 'static,
+                    Payload: ::later::core::JobParameter + Send + 'static,
+                    Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
+                {
+                    Box::pin(async move {
+                        let ctx = #context_name {
+                            inner: arc_ctx.clone(),
+                        };
+                        handler(ctx, payload).await
+                    })
+                }
+
                 #(#builder_methods)*
 
                 pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
-                where
-                    C: Sync + Send + Clone + 'static,
                 {
                     let publisher = later::BackgroundJobServerPublisher::new(
                         self.id.clone(),
                         self.amqp_address.clone(),
                         self.storage,
                     )?;
-                    let ctx = #context_name {
+                    let ctx_inner = #inner_type_name {
                         job: publisher,
                         app: self.ctx,
                     };
                     let handler = #name {
-                        ctx: ctx,
+                        ctx: std::sync::Arc::new(ctx_inner),
                         #(#builder_assignments)*
                     };
 
@@ -124,15 +166,14 @@ impl ToTokens for TraitImpl {
                 }
             }
 
-            #(#impl_message)*
+            #[async_trait]
+            impl<C> ::later::core::BgJobHandler<C> for #name<C>
+            where
+                C: Sync + Send + 'static,
+            {
+                async fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
+                    use ::later::core::JobParameter;
 
-            pub struct #name<C> {
-                pub ctx: #context_name2<C>,
-                #(#public_fields)*
-            }
-
-            impl<C> ::later::core::BgJobHandler<C> for #name<C> {
-                fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
                     match ptype.as_str() {
 
                         #(#match_items)*
@@ -149,6 +190,16 @@ impl ToTokens for TraitImpl {
                     &self.ctx.job
                 }
             }
+
+            pub struct #name<C>
+            where
+                C: Sync + Send + 'static,
+            {
+                pub ctx: std::sync::Arc<#inner_type_name<C>>,
+                #(#public_fields)*
+            }
+
+            #(#impl_message)*
         })
     }
 }
@@ -183,14 +234,14 @@ impl ToTokens for ImplMessage {
 struct FieldItem {
     req: Request,
     out_type: OutputType,
-    context_name: proc_macro2::Ident,
+    inner_name: proc_macro2::Ident,
 }
 impl FieldItem {
-    fn new(req: Request, context_name: &proc_macro2::Ident, out_type: OutputType) -> Self {
+    fn new(req: Request, inner_name: &proc_macro2::Ident, out_type: OutputType) -> Self {
         Self {
             req,
             out_type,
-            context_name: context_name.clone(),
+            inner_name: inner_name.clone(),
         }
     }
 }
@@ -209,17 +260,37 @@ impl ToTokens for FieldItem {
         let builder_method_name = format_ident!("with_{}_handler", name);
         let input = &sig.input;
         let docs = format!("Register a handler for [`{}`].\nThis handler will be called when a job is enqueued with a payload of this type.", input);
-        let context_name = self.context_name.clone();
+        let inner_name = self.inner_name.clone();
 
         match self.out_type {
             OutputType::FieldPrivate => {
                 tokens.extend(quote! {
-                    #name: ::core::option::Option<Box<dyn Fn(&#context_name<C>, #input) -> anyhow::Result<()> + Send + Sync>>,
+                    #name: ::core::option::Option<
+                                Box<
+                                    dyn Fn(
+                                            std::sync::Arc<#inner_name<C>>,
+                                            #input,
+                                        )
+                                            -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                                        + Sync
+                                        + Send,
+                                >,
+                            >,
                 })
             },
             OutputType::FieldPub => {
                 tokens.extend(quote! {
-                    pub #name: ::core::option::Option<Box<dyn Fn(&#context_name<C>, #input) -> anyhow::Result<()> + Send + Sync>>,
+                    pub #name: ::core::option::Option<
+                                    Box<
+                                        dyn Fn(
+                                                std::sync::Arc<#inner_name<C>>,
+                                                #input,
+                                            )
+                                                -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                                            + Sync
+                                            + Send,
+                                    >,
+                                >,
                 })
             },
             OutputType::UninitializedField => {
@@ -230,10 +301,15 @@ impl ToTokens for FieldItem {
             OutputType::BuilderMethod => {
                 tokens.extend(quote! {
                     #[doc = #docs]
-                    pub fn #builder_method_name<M>(mut self, handler: M) -> Self
+                    pub fn #builder_method_name<M, Fut>(mut self, handler: M) -> Self
                     where
-                        M: Fn(&#context_name<C>, #input) -> anyhow::Result<()> + Send + Sync + 'static {
-                        self.#name = Some(Box::new(handler));
+                        M: FnOnce(DeriveHandlerContext<C>, #input) -> Fut + Send + Sync + Copy + 'static,
+                        Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
+                        C: Sync + Send + 'static,
+                    {
+                        self.#name = Some(Box::new(move |ctx, payload| {
+                            Self::wrap_complex_handler(ctx, payload, handler)
+                        }));
                         self
                     }
 
@@ -257,11 +333,9 @@ impl ToTokens for MatchArm {
 
         tokens.extend(quote! {
             stringify!(#name) => {
-                use ::later::core::JobParameter;
-
                 let payload = #type_name::from_bytes(payload);
                 if let Some(handler) = &self.#name {
-                    (handler)(&self.ctx, payload)
+                    (handler)(self.ctx.clone(), payload).await
                 } else {
                     unimplemented!("")
                 }

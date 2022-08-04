@@ -78,15 +78,15 @@ let ctx = JobsBuilder::new(
 // this will only accept types defined inside the macro above
 
 // define handler
-fn handle_send_email(
-        ctx: &JobContext<MyContext>, // JobContext is generated wrapper
+async fn handle_send_email(
+        ctx: JobContext<MyContext>, // JobContext is generated wrapper
         payload: SendEmail,
     ) -> anyhow::Result<()> {
         // handle `payload`
 
         // ctx.app -> Access the MyContext passed during bootstrapping
-        // ctx.enqueue(_) to enqueue more jobs
-        // ctx.enqueue_continue(_) to chain jobs
+        // ctx.enqueue(_).await to enqueue more jobs
+        // ctx.enqueue_continue(_).await to chain jobs
 
         Ok(()) // or Err(_) to retry this message
     }
@@ -104,7 +104,7 @@ Fire and forget jobs are executed only once and executed by an available worker 
 ctx.enqueue(SendEmail{
     address: "hello@rust-lang.org".to_string(),
     body: "You rock!".to_string() 
-});
+}).await;
 
 ```
 
@@ -116,14 +116,14 @@ One or many jobs are chained together to create an workflow. Child jobs are exec
 let email_welcome = ctx.enqueue(SendEmail{
     address: "customer@example.com".to_string(),
     body: "Creating your account!".to_string() 
-});
+}).await;
 
-let create_account = ctx.enqueue_continue(email_welcome, CreateAccount { ... });
+let create_account = ctx.enqueue_continue(email_welcome, CreateAccount { ... }).await;
 
 let email_confirmation = ctx.enqueue_continue(create_account, SendEmail{
     address: "customer@example.com".to_string(),
     body: "Your account has been created!".to_string() 
-});
+}).await;
 
 ```
 
@@ -136,14 +136,14 @@ Just like fire and forget jobs that starts after a certain interval.
 ctx.enqueue_delayed(SendEmail{
     address: "hello@rust-lang.org".to_string(),
     body: "You rock!".to_string() 
-}, std::time::Duration::from_secs(60));
+}, std::time::Duration::from_secs(60)).await;
 
 // specific time
 let run_job_at : chrono::DateTime<Utc> = ...;
 ctx.enqueue_delayed_at(SendEmail{
     address: "hello@rust-lang.org".to_string(),
     body: "You rock!".to_string() 
-}, run_job_at);
+}, run_job_at).await;
 
 ```
 

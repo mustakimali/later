@@ -5,41 +5,60 @@ use bg::*;
 use later::{storage::redis::Redis, BackgroundJobServer};
 use rocket::State;
 
-mod bg;
-#[allow(dead_code)]
-mod non_generated;
+mod bg {
+    use serde::{Deserialize, Serialize};
 
-fn handle_sample_message(
-    _ctx: &DeriveHandlerContext<JobContext>,
+    later::background_job! {
+        struct DeriveHandler {
+            sample_message: SampleMessage,
+            another_sample_message: AnotherSampleMessage,
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct SampleMessage {
+        pub txt: String,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct AnotherSampleMessage {
+        pub txt: String,
+    }
+
+    #[derive(Clone)]
+    pub struct JobContext {}
+}
+
+async fn handle_sample_message(
+    _ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
-fn handle_another_sample_message(
-    _ctx: &DeriveHandlerContext<JobContext>,
+
+async fn handle_another_sample_message(
+    _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    // Todo: async
-    // let rt = tokio::runtime::Builder::new_current_thread()
-    //     .enable_all()
-    //     .build()?;
-
-    // let id = rt.block_on(_ctx.enqueue(SampleMessage {
-    //     txt: "test".to_string(),
-    // }))?;
-    // let f = _ctx.enqueue_continue(
-    //     id.clone(),
-    //     SampleMessage {
-    //         txt: format!("Continuation of job {}", id),
-    //     },
-    // );
-    
+    let id = _ctx
+        .enqueue(SampleMessage {
+            txt: "test".to_string(),
+        })
+        .await?;
+    let id2 = _ctx
+        .enqueue_continue(
+            id.clone(),
+            SampleMessage {
+                txt: format!("Continuation of job {}", id),
+            },
+        )
+        .await?;
 
     println!(
-        "On Handle handle_another_sample_message: {:?}, enqueued: {}",
-        payload, id
+        "On Handle handle_another_sample_message: {:?}, enqueued: {}, {}",
+        payload, id, id2
     );
 
     Ok(())
@@ -80,9 +99,6 @@ async fn rocket() -> _ {
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };
-
-    #[cfg(debug_assertions)]
-    non_generated::test_non_generated().await;
 
     rocket::build()
         .mount("/", routes![hello, metrics])
