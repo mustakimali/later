@@ -14,10 +14,10 @@ impl AppContext {
 }
 
 fn handle_sample_message(
-    _ctx: &'static DeriveHandlerContext<JobContext>,
+    _ctx: std::sync::Arc<DeriveHandlerContext<JobContext>>,
     payload: SampleMessage,
 ) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
-    Box::pin(async {
+    Box::pin(async move {
         println!("On Handle handle_sample_message: {:?}", payload);
 
         let _ = _ctx
@@ -111,10 +111,10 @@ where
     amqp_address: String,
     storage: Box<dyn ::later::storage::Storage>,
     sample_message: ::core::option::Option<
-        Box<dyn Fn(&'static DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Sync + Send>,
+        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Sync + Send>,
     >,
     another_sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut + Sync + Send>,
+        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut + Sync + Send>,
     >,
 }
 
@@ -145,7 +145,7 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&'static DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Send + Sync + 'static,
+        M: Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Send + Sync + 'static,
         C: Sync + Send + 'static,
     {
         self.sample_message = Some(Box::new(handler));
@@ -155,7 +155,7 @@ where
     ///This handler will be called when a job is enqueued with a payload of this type.
     pub fn with_another_sample_message_handler<M>(mut self, handler: M) -> Self
     where
-        M: Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut
+        M: Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut
             + Send
             + Sync
             + 'static,
@@ -175,7 +175,7 @@ where
             app: self.ctx,
         };
         let handler = DeriveHandler {
-            ctx: ctx,
+            ctx: std::sync::Arc::new(ctx),
             sample_message: self.sample_message,
             another_sample_message: self.another_sample_message,
         };
@@ -214,12 +214,12 @@ pub struct DeriveHandler<C>
 where
     C: Sync + Send + 'static,
 {
-    pub ctx: DeriveHandlerContext<C>,
+    pub ctx: std::sync::Arc<DeriveHandlerContext<C>>,
     pub sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, SampleMessage) -> PinnedBoxFut + Send + Sync>,
+        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Send + Sync>,
     >,
     pub another_sample_message: ::core::option::Option<
-        Box<dyn Fn(&DeriveHandlerContext<C>, AnotherSampleMessage) -> PinnedBoxFut + Send + Sync>,
+        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut + Send + Sync>,
     >,
 }
 
@@ -233,7 +233,7 @@ where
             "sample_message" => {
                 let payload = SampleMessage::from_bytes(payload);
                 if let Some(handler) = &self.sample_message {
-                    (handler)(&self.ctx, payload).await
+                    (handler)(self.ctx.clone(), payload).await
                 } else {
                     unimplemented!()
                 }
@@ -241,7 +241,7 @@ where
             "another_sample_message" => {
                 let payload = AnotherSampleMessage::from_bytes(payload);
                 if let Some(handler) = &self.another_sample_message {
-                    (handler)(&self.ctx, payload).await
+                    (handler)(self.ctx.clone(), payload).await
                 } else {
                     unimplemented!()
                 }
