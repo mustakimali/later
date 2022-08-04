@@ -1,37 +1,32 @@
-use std::{future::Future, process::Output};
-
 use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
 
 struct AppContext {
-    //jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext, std::future::Future<Output = anyhow::Result<()>>>>,
+    jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
 impl AppContext {
     pub async fn enqueue<T: JobParameter>(&self, msg: T) -> anyhow::Result<JobId> {
-        //self.jobs.enqueue(msg).await
-        todo!()
+        self.jobs.enqueue(msg).await
     }
 }
 
-fn handle_sample_message(
-    _ctx: std::sync::Arc<DeriveHandlerContext<JobContext>>,
+async fn handle_sample_message(
+    _ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
-) -> std::pin::Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> {
-    Box::pin(async move {
-        println!("On Handle handle_sample_message: {:?}", payload);
+) -> anyhow::Result<()> {
+    println!("On Handle handle_sample_message: {:?}", payload);
 
-        let _ = _ctx
-            .enqueue(AnotherSampleMessage {
-                txt: "test".to_string(),
-            })
-            .await;
+    let _ = _ctx
+        .enqueue(AnotherSampleMessage {
+            txt: "test".to_string(),
+        })
+        .await;
 
-        Ok(())
-    })
+    Ok(())
 }
 
 async fn handle_another_sample_message(
-    _ctx: &DeriveHandlerContext<JobContext>,
+    _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
     println!("On Handle handle_another_sample_message: {:?}", payload);
@@ -50,24 +45,12 @@ pub async fn test_non_generated() {
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    /*
-    If T take one generic F: (.., ..) -> Future<Output = anyhow::Result<()>>
-    Then I must provider the same closure for each of the with_.._handler(..)
-    If I take generic F: (.., ..) -> Box<dyn Future<Output = anyhow::Result<()>>
-    Then when I execute the handler, I am unable to .await because the size isn't known at compile time
-    If I take n generic F1..Fn,
-    I am able to pass multiple closure, but
-    I am not able to pass the function handle_sample_message and
-    I am unable to skip any `with_.._handler` function as the Fx can't be inferred
-     */
-    .with_sample_message_handler(Box::new(handle_sample_message))
-    //.with_another_sample_message_handler(Box::new(handle_another_sample_message))
-    //.with_sample_message_handler(|ctx, p| async { Ok(()) })
-    //.with_another_sample_message_handler(|ctx, p| async { Ok(()) })
+    .with_sample_message_handler(handle_sample_message)
+    .with_another_sample_message_handler(handle_another_sample_message)
     .build()
     .expect("start bg server");
 
-    //let _ctx = AppContext { jobs: bjs };
+    let _ctx = AppContext { jobs: bjs };
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -86,15 +69,27 @@ pub struct JobContext {}
 /* GENERATED */
 
 use serde::{Deserialize, Serialize};
-//type PinnedBoxFut = std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>>>>;
-type PinnedBoxFut = later::futures::future::BoxFuture<'static, anyhow::Result<()>>;
 
-pub struct DeriveHandlerContext<C> {
+pub struct DeriveHandlerContext<C: Send + Sync> {
+    inner: std::sync::Arc<DeriveHandlerContextInner<C>>,
+}
+impl<C> std::ops::Deref for DeriveHandlerContext<C>
+where
+    C: Send + Sync,
+{
+    type Target = DeriveHandlerContextInner<C>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct DeriveHandlerContextInner<C> {
     job: ::later::BackgroundJobServerPublisher,
     app: C,
 }
 
-impl<C> std::ops::Deref for DeriveHandlerContext<C> {
+impl<C> std::ops::Deref for DeriveHandlerContextInner<C> {
     type Target = ::later::BackgroundJobServerPublisher;
 
     fn deref(&self) -> &Self::Target {
@@ -111,10 +106,26 @@ where
     amqp_address: String,
     storage: Box<dyn ::later::storage::Storage>,
     sample_message: ::core::option::Option<
-        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Sync + Send>,
+        Box<
+            dyn Fn(
+                    std::sync::Arc<DeriveHandlerContextInner<C>>,
+                    SampleMessage,
+                )
+                    -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                + Sync
+                + Send,
+        >,
     >,
     another_sample_message: ::core::option::Option<
-        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut + Sync + Send>,
+        Box<
+            dyn Fn(
+                    std::sync::Arc<DeriveHandlerContextInner<C>>,
+                    AnotherSampleMessage,
+                )
+                    -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                + Sync
+                + Send,
+        >,
     >,
 }
 
@@ -141,36 +152,75 @@ where
             another_sample_message: ::core::option::Option::None,
         }
     }
+
+    /// Accept a simplified and ergonomic async function handler
+    ///     Fn(Ctx<C>, Payload) -> impl Future<Output = anyhow::Result<()>>
+    /// and map this to the complex/nasty stuff required internally to make the compiler happy.
+    ///     Fn(Arc<CtxWrapper<C>>, Payload) -> Pin<Box<Future<Output = anyhow::Result<()>>>
+    fn wrap_complex_handler<Payload, HandlerFunc, Fut>(
+        arc_ctx: std::sync::Arc<DeriveHandlerContextInner<C>>,
+        payload: Payload,
+        handler: HandlerFunc,
+    ) -> ::later::futures::future::BoxFuture<'static, Fut::Output>
+    where
+        HandlerFunc: Fn(DeriveHandlerContext<C>, Payload) -> Fut + Send + 'static,
+        Payload: ::later::core::JobParameter + Send + 'static,
+        Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
+    {
+        Box::pin(async move {
+            let ctx = DeriveHandlerContext {
+                inner: arc_ctx.clone(),
+            };
+            let fut = handler(ctx, payload);
+            fut.await
+        })
+    }
+
     ///Register a handler for [`SampleMessage`].
     ///This handler will be called when a job is enqueued with a payload of this type.
-    pub fn with_sample_message_handler<M>(mut self, handler: M) -> Self
+    pub fn with_sample_message_handler<M, Fut>(mut self, handler: M) -> Self
     where
-        M: Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Send + Sync + 'static,
+        M: Fn(DeriveHandlerContext<C>, SampleMessage) -> Fut + Send + Sync + Copy + 'static,
+        Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
         C: Sync + Send + 'static,
     {
-        self.sample_message = Some(Box::new(handler));
+        self.sample_message = Some(Box::new(move |ctx, payload| {
+            Self::wrap_complex_handler(ctx, payload, handler)
+        }));
         self
     }
+
     ///Register a handler for [`AnotherSampleMessage`].
     ///This handler will be called when a job is enqueued with a payload of this type.
-    pub fn with_another_sample_message_handler<M>(mut self, handler: M) -> Self
+    pub fn with_another_sample_message_handler<M, Fut>(mut self, handler: M) -> Self
     where
-        M: Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut
-            + Send
-            + Sync
-            + 'static,
+        M: Fn(DeriveHandlerContext<C>, AnotherSampleMessage) -> Fut + Send + Sync + Copy + 'static,
+        Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
         C: Sync + Send + 'static,
     {
-        self.another_sample_message = Some(Box::new(handler));
+        self.another_sample_message = Some(Box::new(move |ctx, payload| {
+            Self::wrap_complex_handler(ctx, payload, handler)
+        }));
         self
     }
+    // where
+    //     M: Fn(std::sync::Arc<DeriveHandlerContextInner<C>>, AnotherSampleMessage) -> PinnedBoxFut
+    //         + Send
+    //         + Sync
+    //         + 'static,
+    //     C: Sync + Send + 'static,
+    // {
+    //     self.another_sample_message = Some(Box::new(handler));
+    //     self
+    // }
+
     pub fn build(self) -> anyhow::Result<BackgroundJobServer<C, DeriveHandler<C>>> {
         let publisher = ::later::BackgroundJobServerPublisher::new(
             self.id.clone(),
             self.amqp_address.clone(),
             self.storage,
         )?;
-        let ctx = DeriveHandlerContext {
+        let ctx = DeriveHandlerContextInner {
             job: publisher,
             app: self.ctx,
         };
@@ -214,12 +264,28 @@ pub struct DeriveHandler<C>
 where
     C: Sync + Send + 'static,
 {
-    pub ctx: std::sync::Arc<DeriveHandlerContext<C>>,
+    pub ctx: std::sync::Arc<DeriveHandlerContextInner<C>>,
     pub sample_message: ::core::option::Option<
-        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, SampleMessage) -> PinnedBoxFut + Send + Sync>,
+        Box<
+            dyn Fn(
+                    std::sync::Arc<DeriveHandlerContextInner<C>>,
+                    SampleMessage,
+                )
+                    -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                + Send
+                + Sync,
+        >,
     >,
     pub another_sample_message: ::core::option::Option<
-        Box<dyn Fn(std::sync::Arc<DeriveHandlerContext<C>>, AnotherSampleMessage) -> PinnedBoxFut + Send + Sync>,
+        Box<
+            dyn Fn(
+                    std::sync::Arc<DeriveHandlerContextInner<C>>,
+                    AnotherSampleMessage,
+                )
+                    -> ::later::futures::future::BoxFuture<'static, anyhow::Result<()>>
+                + Send
+                + Sync,
+        >,
     >,
 }
 
