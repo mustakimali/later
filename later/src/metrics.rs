@@ -1,8 +1,5 @@
 use lazy_static::lazy_static;
-use prometheus::{
-    core::MetricVec, register_int_counter_vec, Counter, Encoder, IntCounterVec, Opts, Registry,
-    TextEncoder,
-};
+use prometheus::{register_int_counter_vec, Encoder, IntCounterVec, TextEncoder};
 
 lazy_static! {
     pub(crate) static ref COUNTER: Metrics = Metrics::new();
@@ -23,16 +20,10 @@ impl Metrics {
             .unwrap();
         let c = register_int_counter_vec!("jobs_all", "total jobs processed", &["type"]).unwrap();
 
-        // let registry = Registry::new();
-        // registry.register(Box::new(a.clone())).unwrap();
-        // registry.register(Box::new(b.clone())).unwrap();
-        // registry.register(Box::new(c.clone())).unwrap();
-
         Metrics {
             commands_all: a,
             commands_failed: b,
             jobs_all: c,
-            //registry: registry,
         }
     }
 

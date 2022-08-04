@@ -3,7 +3,7 @@ use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, BackgroundJobServerPublisher, JobId, UtcDateTime, metrics};
+use crate::{encoder, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use amiquip::{Connection, Exchange, Publish};
 use anyhow::Context;
 use std::str::FromStr;

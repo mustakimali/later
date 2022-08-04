@@ -1,4 +1,4 @@
-use later::{core::JobParameter, storage::redis::Redis, BackgroundJobServer, JobId};
+use later::{storage::redis::Redis, BackgroundJobServer};
 use macro_generated::*;
 use rocket::State;
 use serde::{Deserialize, Serialize};
@@ -91,11 +91,10 @@ pub struct JobContext {}
 
 /* GENERATED */
 mod macro_generated {
-    use serde::{Deserialize, Serialize};
-
     pub struct DeriveHandlerContext<C: Send + Sync> {
         inner: std::sync::Arc<DeriveHandlerContextInner<C>>,
     }
+
     impl<C> std::ops::Deref for DeriveHandlerContext<C>
     where
         C: Send + Sync,
@@ -128,6 +127,7 @@ mod macro_generated {
         id: String,
         amqp_address: String,
         storage: Box<dyn ::later::storage::Storage>,
+
         sample_message: ::core::option::Option<
             Box<
                 dyn Fn(
@@ -202,7 +202,7 @@ mod macro_generated {
         ///This handler will be called when a job is enqueued with a payload of this type.
         pub fn with_sample_message_handler<M, Fut>(mut self, handler: M) -> Self
         where
-            M: Fn(DeriveHandlerContext<C>, super::SampleMessage) -> Fut
+            M: FnOnce(DeriveHandlerContext<C>, super::SampleMessage) -> Fut
                 + Send
                 + Sync
                 + Copy
@@ -220,7 +220,7 @@ mod macro_generated {
         ///This handler will be called when a job is enqueued with a payload of this type.
         pub fn with_another_sample_message_handler<M, Fut>(mut self, handler: M) -> Self
         where
-            M: Fn(DeriveHandlerContext<C>, super::AnotherSampleMessage) -> Fut
+            M: FnOnce(DeriveHandlerContext<C>, super::AnotherSampleMessage) -> Fut
                 + Send
                 + Sync
                 + Copy
@@ -240,12 +240,12 @@ mod macro_generated {
                 self.amqp_address.clone(),
                 self.storage,
             )?;
-            let ctx = DeriveHandlerContextInner {
+            let ctx_inner = DeriveHandlerContextInner {
                 job: publisher,
                 app: self.ctx,
             };
             let handler = DeriveHandler {
-                ctx: std::sync::Arc::new(ctx),
+                ctx: std::sync::Arc::new(ctx_inner),
                 sample_message: self.sample_message,
                 another_sample_message: self.another_sample_message,
             };
