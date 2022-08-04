@@ -14,6 +14,7 @@ use std::{
 };
 
 pub use anyhow;
+pub use async_trait;
 pub use futures;
 pub use later_derive::background_job;
 
@@ -54,4 +55,8 @@ pub struct BackgroundJobServerPublisher {
     routing_key: String,
     storage: Persist,
     _connection: Connection,
+}
+
+pub fn generate_id() -> String {
+    rusty_ulid::generate_ulid_string()
 }

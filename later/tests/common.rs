@@ -7,7 +7,9 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct AppContext {}
+pub struct AppContext {
+    invc: Arc<Mutex<Vec<TestCommand>>>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestCommand {
@@ -31,7 +33,7 @@ later::background_job! {
 pub async fn create_server(
     invc: Arc<Mutex<Vec<TestCommand>>>,
 ) -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
-    let job_ctx = AppContext {};
+    let job_ctx = AppContext { invc: invc };
     let storage = later::storage::redis::Redis::new_cleared("redis://127.0.0.1")
         .await
         .expect("connect to redis");
@@ -41,7 +43,7 @@ pub async fn create_server(
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_millis(),
-        uuid::Uuid::new_v4().simple().to_string()[28..].to_string()
+        later::generate_id()[16..].to_string()
     );
 
     JobServerBuilder::new(
@@ -50,17 +52,17 @@ pub async fn create_server(
         "amqp://guest:guest@localhost:5672".into(),
         Box::new(storage),
     )
-    .with_test_command_handler(move |_ctx, payload| handle_internal(payload, invc.clone()))
+    .with_test_command_handler(handle_internal)
     .build()
     .expect("start bg server")
 }
 
-pub fn handle_internal(
+async fn handle_internal(
+    ctx: JobServerContext<AppContext>,
     payload: TestCommand,
-    invc: Arc<Mutex<Vec<TestCommand>>>,
 ) -> anyhow::Result<()> {
     let retry_count = {
-        let mut invc = invc.lock().expect("acquire lock to invc");
+        let mut invc = ctx.app.invc.lock().expect("acquire lock to invc");
         invc.push(payload.clone());
 
         println!("[TEST] Command received {}", payload.name.clone());

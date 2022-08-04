@@ -743,7 +743,6 @@ dependencies = [
  "rocket",
  "serde",
  "tokio",
- "uuid 1.1.2",
 ]
 
 [[package]]
@@ -1270,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "later"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "amiquip",
  "anyhow",
@@ -1287,17 +1286,17 @@ dependencies = [
  "prometheus",
  "redis",
  "rmp-serde",
+ "rusty_ulid",
  "serde",
  "serde_derive",
  "sqlx",
  "tokio",
  "tracing",
- "uuid 1.1.2",
 ]
 
 [[package]]
 name = "later-derive"
-version = "0.0.2"
+version = "0.0.4"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -2095,6 +2094,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0a5f7c728f5d284929a1cccb5bc19884422bfe6ef4d6c409da2c41838983fcf"
 
 [[package]]
+name = "rusty_ulid"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf6169f464e79b379a190df5d09d59fe0b581b1b0f788ce9de63953c31897aa0"
+dependencies = [
+ "chrono",
+ "doc-comment",
+ "rand",
+ "serde",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2373,7 +2384,7 @@ dependencies = [
  "thiserror",
  "tokio-stream",
  "url 2.2.2",
- "uuid 0.8.2",
+ "uuid",
  "webpki 0.21.4",
  "webpki-roots",
  "whoami",
@@ -2833,15 +2844,6 @@ name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-
-[[package]]
-name = "uuid"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "valuable"

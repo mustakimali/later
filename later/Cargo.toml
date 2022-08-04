@@ -1,6 +1,6 @@
 [package]
 name = "later"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 description = "Distributed Background jobs manager and runner for Rust"
 license = "MIT OR Apache-2.0"
@@ -14,11 +14,11 @@ redis = ["dep:redis"]
 
 [dependencies]
 # internal
-later-derive = { path = "../later-derive", version = "0.0.2"}
+later-derive = { path = "../later-derive", version = "0.0.4"}
 
 # external
 anyhow = "1.0.58"
-uuid = { version = "1.1.2", features = ["v4"] }
+rusty_ulid = "1.0.0"
 amiquip = { version = "0.4", default-features = false }
 tokio = { version = "1.19.2", features = ["full"]}
 serde = "1.0"

@@ -35,7 +35,7 @@ async fn handle_another_sample_message(
 
 #[get("/")]
 async fn hello(state: &State<AppContext>) -> String {
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = later::generate_id();
     let msg = SampleMessage { txt: id.clone() };
     let parent_id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
     let msg2 = AnotherSampleMessage { txt: id };

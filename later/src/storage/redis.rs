@@ -209,8 +209,6 @@ fn get_scan_item_key(range_key: &str, idx: usize) -> String {
 #[cfg(test)]
 mod test_redis {
 
-    use uuid::Uuid;
-
     use super::*;
 
     async fn create_client() -> Redis {
@@ -221,7 +219,7 @@ mod test_redis {
 
     #[tokio::test]
     async fn basic() {
-        let data = uuid::Uuid::new_v4().to_string();
+        let data = crate::generate_id();
         let my_data = data.as_bytes();
         let storage = create_client().await;
         storage.set("key", my_data).await.unwrap();
@@ -232,13 +230,13 @@ mod test_redis {
 
     #[tokio::test]
     async fn range_basic() {
-        let key = format!("key-{}", Uuid::new_v4().to_string());
+        let key = format!("key-{}", crate::generate_id());
 
         let storage = create_client().await;
 
         for _ in 0..10 {
             storage
-                .push(&key, uuid::Uuid::new_v4().to_string().as_bytes())
+                .push(&key, crate::generate_id().as_bytes())
                 .await
                 .unwrap();
         }
@@ -251,7 +249,7 @@ mod test_redis {
 
     #[tokio::test]
     async fn range_basic_2_items() {
-        let key = format!("key-{}", Uuid::new_v4().to_string());
+        let key = format!("key-{}", crate::generate_id());
 
         let storage = create_client().await;
 
@@ -283,7 +281,7 @@ mod test_redis {
 
     #[tokio::test]
     async fn range_basic_1_item() {
-        let key = format!("key-{}", Uuid::new_v4().to_string());
+        let key = format!("key-{}", crate::generate_id());
 
         let storage = create_client().await;
 
@@ -309,7 +307,7 @@ mod test_redis {
 
     #[tokio::test]
     async fn range_trim() {
-        let key = format!("key-{}", Uuid::new_v4().to_string());
+        let key = format!("key-{}", crate::generate_id());
 
         let storage = create_client().await;
 

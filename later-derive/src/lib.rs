@@ -49,11 +49,13 @@ impl ToTokens for TraitImpl {
             .iter()
             .cloned()
             .map(|req| FieldItem::new(req, &inner_type_name, OutputType::UninitializedField));
-        let builder_methods = self
-            .requests
-            .iter()
-            .cloned()
-            .map(|req| FieldItem::new(req, &inner_type_name, OutputType::BuilderMethod));
+        let builder_methods = self.requests.iter().cloned().map(|req| {
+            FieldItem::new(
+                req,
+                &inner_type_name,
+                OutputType::BuilderMethod(context_name.clone()),
+            )
+        });
         let builder_assignments = self
             .requests
             .iter()
@@ -166,7 +168,7 @@ impl ToTokens for TraitImpl {
                 }
             }
 
-            #[async_trait]
+            #[::later::async_trait::async_trait]
             impl<C> ::later::core::BgJobHandler<C> for #name<C>
             where
                 C: Sync + Send + 'static,
@@ -250,7 +252,7 @@ enum OutputType {
     FieldPrivate,
     FieldPub,
     UninitializedField,
-    BuilderMethod,
+    BuilderMethod(proc_macro2::Ident),
     Assignment,
 }
 impl ToTokens for FieldItem {
@@ -262,7 +264,7 @@ impl ToTokens for FieldItem {
         let docs = format!("Register a handler for [`{}`].\nThis handler will be called when a job is enqueued with a payload of this type.", input);
         let inner_name = self.inner_name.clone();
 
-        match self.out_type {
+        match &self.out_type {
             OutputType::FieldPrivate => {
                 tokens.extend(quote! {
                     #name: ::core::option::Option<
@@ -298,12 +300,12 @@ impl ToTokens for FieldItem {
                     #name: ::core::option::Option::None,
                 })
             },
-            OutputType::BuilderMethod => {
+            OutputType::BuilderMethod(context_name) => {
                 tokens.extend(quote! {
                     #[doc = #docs]
                     pub fn #builder_method_name<M, Fut>(mut self, handler: M) -> Self
                     where
-                        M: FnOnce(DeriveHandlerContext<C>, #input) -> Fut + Send + Sync + Copy + 'static,
+                        M: FnOnce(#context_name<C>, #input) -> Fut + Send + Sync + Copy + 'static,
                         Fut: ::later::futures::future::Future<Output = anyhow::Result<()>> + Send,
                         C: Sync + Send + 'static,
                     {

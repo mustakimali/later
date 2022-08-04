@@ -70,7 +70,7 @@ struct AppContext {
 
 #[get("/")]
 async fn hello(state: &State<AppContext>) -> String {
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = later::generate_id();
     let msg = AnotherSampleMessage { txt: id };
     state.jobs.enqueue(msg).await.expect("Enqueue Job");
     "Hello, world!".to_string()

@@ -88,7 +88,7 @@ impl BackgroundJobServerPublisher {
         delay_until: Option<UtcDateTime>,
         cron_schedule: Option<cron::Schedule>,
     ) -> anyhow::Result<JobId> {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = crate::generate_id();
 
         let job = Job {
             id: JobId(id.clone()),
