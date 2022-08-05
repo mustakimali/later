@@ -1,6 +1,8 @@
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, Encoder, IntCounterVec, TextEncoder};
 
+use crate::models::AmqpCommand;
+
 lazy_static! {
     pub(crate) static ref COUNTER: Metrics = Metrics::new();
 }
@@ -34,5 +36,13 @@ impl Metrics {
         encoder.encode(&metric_families, &mut buffer)?;
 
         Ok(String::from_utf8(buffer.clone())?)
+    }
+
+    pub fn record_command(&self, ty: &str) {
+        self.commands_all.with_label_values(&[ty]).inc();
+    }
+
+    pub fn record_job(&self, ty: &str) {
+        self.jobs_all.with_label_values(&[ty]).inc();
     }
 }

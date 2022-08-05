@@ -19,11 +19,8 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    let ty = command.get_type();
-    metrics::COUNTER
-        .commands_all
-        .with_label_values(&[ty.as_str()])
-        .inc();
+    let cmd_ty = command.get_type();
+    metrics::COUNTER.record_command(&cmd_ty);
 
     Ok(match command {
         AmqpCommand::PollDelayedJobs => {
@@ -51,10 +48,7 @@ where
             let _ = inproc_cmd_tx.send(ChannelCommand::PollRequeuedJobs).await;
         }
         AmqpCommand::ExecuteJob(job) => {
-            metrics::COUNTER
-                .jobs_all
-                .with_label_values(&[ty.as_str()])
-                .inc();
+            metrics::COUNTER.record_job(&cmd_ty);
 
             tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
