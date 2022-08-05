@@ -96,6 +96,7 @@ async fn rocket() -> _ {
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
     .build()
+    .await
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };

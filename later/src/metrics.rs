@@ -16,16 +16,21 @@ pub(crate) struct Metrics {
 
 impl Metrics {
     pub fn new() -> Self {
-        let a = register_int_counter_vec!("commands_all", "total commands processed", &["type"])
-            .unwrap();
-        let b = register_int_counter_vec!("commands_failed", "total commands failed", &["type"])
-            .unwrap();
-        let c = register_int_counter_vec!("jobs_all", "total jobs processed", &["type"]).unwrap();
-
         Metrics {
-            commands_all: a,
-            commands_failed: b,
-            jobs_all: c,
+            commands_all: register_int_counter_vec!(
+                "commands_all",
+                "total commands processed",
+                &["type"]
+            )
+            .unwrap(),
+            commands_failed: register_int_counter_vec!(
+                "commands_failed",
+                "total commands failed",
+                &["type"]
+            )
+            .unwrap(),
+            jobs_all: register_int_counter_vec!("jobs_all", "total jobs processed", &["type"])
+                .unwrap(),
         }
     }
 
@@ -38,11 +43,11 @@ impl Metrics {
         Ok(String::from_utf8(buffer.clone())?)
     }
 
-    pub fn record_command(&self, ty: &str) {
-        self.commands_all.with_label_values(&[ty]).inc();
-    }
-
-    pub fn record_job(&self, ty: &str) {
-        self.jobs_all.with_label_values(&[ty]).inc();
+    pub fn record_command(&self, cmd: &AmqpCommand) {
+        let ty = cmd.get_type();
+        self.commands_all.with_label_values(&[&ty]).inc();
+        if let AmqpCommand::ExecuteJob(_) = cmd {
+            self.jobs_all.with_label_values(&[&ty]).inc();
+        }
     }
 }

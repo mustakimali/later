@@ -1,16 +1,15 @@
 #![doc = include_str!("../README.md")]
 use crate::core::BgJobHandler;
 
-use amiquip::{Channel, Connection};
-
+use lapin::Channel;
 use persist::Persist;
 use serde::{Deserialize, Serialize};
+use tokio::task::JoinHandle;
 
 use std::{
     fmt::Display,
     marker::PhantomData,
     sync::{Arc, Mutex},
-    thread::JoinHandle,
 };
 
 pub use anyhow;
@@ -24,9 +23,11 @@ mod commands;
 pub mod core;
 pub mod encoder;
 mod id;
+mod amqp;
 mod metrics;
 mod models;
 mod persist;
+mod stats;
 pub mod storage;
 
 pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
@@ -51,10 +52,10 @@ where
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
-    channel: Arc<Mutex<Channel>>,
+    channel: Channel,
     routing_key: String,
     storage: Persist,
-    _connection: Connection,
+    //_connection: Connection,
 }
 
 pub fn generate_id() -> String {

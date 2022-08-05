@@ -67,6 +67,7 @@ async fn rocket() -> _ {
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
     .build()
+    .await
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };
@@ -234,12 +235,15 @@ mod macro_generated {
             self
         }
 
-        pub fn build(self) -> anyhow::Result<::later::BackgroundJobServer<C, DeriveHandler<C>>> {
+        pub async fn build(
+            self,
+        ) -> anyhow::Result<::later::BackgroundJobServer<C, DeriveHandler<C>>> {
             let publisher = ::later::BackgroundJobServerPublisher::new(
                 self.id.clone(),
                 self.amqp_address.clone(),
                 self.storage,
-            )?;
+            )
+            .await?;
             let ctx_inner = DeriveHandlerContextInner {
                 job: publisher,
                 app: self.ctx,
@@ -250,7 +254,7 @@ mod macro_generated {
                 another_sample_message: self.another_sample_message,
             };
 
-            ::later::BackgroundJobServer::start(handler)
+            ::later::BackgroundJobServer::start(handler).await
         }
     }
     impl ::later::core::JobParameter for super::SampleMessage {

@@ -3,29 +3,28 @@ use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
-use amiquip::{Connection, Exchange, Publish};
+use crate::{amqp, encoder, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
+use lapin::options::BasicPublishOptions;
+use lapin::BasicProperties;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 impl BackgroundJobServerPublisher {
-    pub fn new(
+    pub async fn new(
         id: String,
         amqp_address: String,
         storage: Box<dyn Storage>,
     ) -> anyhow::Result<Self> {
-        let mut connection = Connection::insecure_open(&amqp_address)?;
-        let channel = connection.open_channel(None)?;
+        let channel = amqp::Client::new(&amqp_address).new_publisher().await?;
         let routing_key = format!("later-{}", id);
 
         Ok(Self {
             _amqp_address: amqp_address,
-            _connection: connection,
+            //_connection: connection,
             storage: Persist::new(storage, routing_key.clone()),
 
-            channel: Arc::new(Mutex::new(channel)),
+            channel: channel,
             routing_key: routing_key,
         })
     }
@@ -181,9 +180,11 @@ impl BackgroundJobServerPublisher {
             Stage::Enqueued(_) => {
                 println!("Enqueue job {}", job.id);
 
-                self.publish_amqp_command(AmqpCommand::ExecuteJob(job))?
+                self.publish_amqp_command(AmqpCommand::ExecuteJob(job))
+                    .await?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
+                println!("Enqueue job {}", job.id);
                 unreachable!("stage is handled in consumer")
             }
         }
@@ -191,12 +192,19 @@ impl BackgroundJobServerPublisher {
         Ok(())
     }
 
-    pub(crate) fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
+    pub(crate) async fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
         let message_bytes = encoder::encode(cmd)?;
-        let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        let exchange = Exchange::direct(&channel);
 
-        exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
+        self
+            .channel
+            .basic_publish(
+                "",
+                &self.routing_key,
+                BasicPublishOptions::default(),
+                &message_bytes,
+                BasicProperties::default(),
+            )
+            .await?;
 
         Ok(())
     }

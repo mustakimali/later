@@ -54,6 +54,7 @@ pub async fn create_server(
     )
     .with_test_command_handler(handle_internal)
     .build()
+    .await
     .expect("start bg server")
 }
 
