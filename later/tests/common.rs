@@ -34,7 +34,7 @@ pub async fn create_server(
     invc: Arc<Mutex<Vec<TestCommand>>>,
 ) -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext { invc: invc };
-    let storage = later::storage::redis::Redis::new_cleared("redis://127.0.0.1")
+    let storage = later::storage::redis::Redis::new("redis://127.0.0.1")
         .await
         .expect("connect to redis");
     let id = format!(

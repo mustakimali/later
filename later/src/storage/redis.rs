@@ -30,18 +30,6 @@ impl Redis {
         })
     }
 
-    pub async fn new_cleared(url: &str) -> anyhow::Result<Self> {
-        let client = redis::Client::open(url)?;
-        let mut conn = client.get_async_connection().await?;
-
-        redis::cmd("FLUSHDB").query_async(&mut conn).await?;
-
-        Ok(Self {
-            _client: client,
-            connection: Arc::new(async_mutex::Mutex::new(conn)),
-        })
-    }
-
     async fn get_of_type<T>(&self, key: &str) -> Option<T>
     where
         T: DeserializeOwned,
