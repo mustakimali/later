@@ -16,7 +16,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - uses: pustovitDmytro/redis-github-action@v1.0.2
-    - uses: Namoshek/rabbitmq-github-action@v1.1.0
+    - name: Install lld
+      run: sudo apt install -y lld
+    - name: Run dependencies
+      run: ./scripts/init-test.sh
     - name: Run tests
-      run: cargo test -- --test-threads 1 --nocapture
+      run: cargo test -- --test-threads 1
