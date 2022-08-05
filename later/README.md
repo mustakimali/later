@@ -10,7 +10,7 @@ A distributed background job manager and runner for Rust. This is currently in P
 ### 1. Import `later` and required dependencies
 
 ```toml
-later = "0.0.3"
+later = { version = "0.0.5", features = ["redis"] }
 serde = "1.0"
 
 ```
