@@ -101,10 +101,7 @@ impl ToTokens for TraitImpl {
             where
                 C: Sync + Send + 'static,
             {
-                ctx: C,
-                id: String,
-                amqp_address: String,
-                storage: Box<dyn ::later::storage::Storage>,
+                config: ::later::Config<C>,
 
                 #(#fields_for_builder)*
             }
@@ -113,12 +110,9 @@ impl ToTokens for TraitImpl {
             where
                 C: Sync + Send + 'static,
                 {
-                pub fn new(context: C, id: String, amqp_address: String, storage: Box<dyn ::later::storage::Storage>) -> Self {
+                pub fn new(config: ::later::Config<C>) -> Self {
                     Self {
-                        ctx: context,
-                        id,
-                        amqp_address,
-                        storage,
+                        config,
 
                         #(#uninitialized_fields)*
                     }
@@ -150,21 +144,25 @@ impl ToTokens for TraitImpl {
 
                 pub async fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
                 {
+                    let mq_client = ::std::sync::Arc::new(self.config.message_queue_client);
+
                     let publisher = later::BackgroundJobServerPublisher::new(
-                        self.id.clone(),
-                        self.amqp_address.clone(),
-                        self.storage,
+                        self.config.name.clone(),
+                        mq_client.clone(),
+                        self.config.storage,
                     ).await?;
+
                     let ctx_inner = #inner_type_name {
                         job: publisher,
-                        app: self.ctx,
+                        app: self.config.context,
                     };
+
                     let handler = #name {
                         ctx: std::sync::Arc::new(ctx_inner),
                         #(#builder_assignments)*
                     };
 
-                    let server = ::later::BackgroundJobServer::start(handler).await?;
+                    let server = ::later::BackgroundJobServer::start(handler, mq_client).await?;
                     server.ensure_worker_ready().await?;
 
                     Ok(server)

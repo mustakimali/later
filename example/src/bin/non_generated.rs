@@ -58,11 +58,15 @@ async fn rocket() -> _ {
     let storage = Redis::new("redis://127.0.0.1/")
         .await
         .expect("connect to redis");
+    let mq = later::mq::amqp::RabbitMq::new("amqp://guest:guest@localhost:5672".into());
+
     let bjs = DeriveHandlerBuilder::new(
-        job_ctx,
-        "fnf-example".into(),
-        "amqp://guest:guest@localhost:5672".into(),
-        Box::new(storage),
+        later::Config::builder()
+            .name("fnf-example".into())
+            .context(job_ctx)
+            .storage(Box::new(storage))
+            .message_queue_client(Box::new(mq))
+            .build(),
     )
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
@@ -124,10 +128,7 @@ mod macro_generated {
     where
         C: Sync + Send + 'static,
     {
-        ctx: C,
-        id: String,
-        amqp_address: String,
-        storage: Box<dyn ::later::storage::Storage>,
+        config: ::later::Config<C>,
 
         sample_message: ::core::option::Option<
             Box<
@@ -157,20 +158,12 @@ mod macro_generated {
     where
         C: Sync + Send + 'static,
     {
-        pub fn new(
-            context: C,
-            id: String,
-            amqp_address: String,
-            storage: Box<dyn ::later::storage::Storage>,
-        ) -> Self
+        pub fn new(config: ::later::Config<C>) -> Self
         where
             C: Sync + Send + 'static,
         {
             Self {
-                ctx: context,
-                id,
-                amqp_address,
-                storage,
+                config,
 
                 sample_message: ::core::option::Option::None,
                 another_sample_message: ::core::option::Option::None,
@@ -238,23 +231,27 @@ mod macro_generated {
         pub async fn build(
             self,
         ) -> anyhow::Result<::later::BackgroundJobServer<C, DeriveHandler<C>>> {
+            let mq_client = ::std::sync::Arc::new(self.config.message_queue_client);
+
             let publisher = ::later::BackgroundJobServerPublisher::new(
-                self.id.clone(),
-                self.amqp_address.clone(),
-                self.storage,
+                self.config.name.clone(),
+                mq_client.clone(),
+                self.config.storage,
             )
             .await?;
+
             let ctx_inner = DeriveHandlerContextInner {
                 job: publisher,
-                app: self.ctx,
+                app: self.config.context,
             };
+
             let handler = DeriveHandler {
                 ctx: std::sync::Arc::new(ctx_inner),
                 sample_message: self.sample_message,
                 another_sample_message: self.another_sample_message,
             };
 
-            let server = ::later::BackgroundJobServer::start(handler).await?;
+            let server = ::later::BackgroundJobServer::start(handler, mq_client).await?;
             server.ensure_worker_ready().await?;
 
             Ok(server)

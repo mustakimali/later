@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use later::{storage::redis::Redis, BackgroundJobServer};
+use later::{mq::amqp, storage::redis::Redis, BackgroundJobServer, Config};
 use rocket::State;
 
 mod bg {
@@ -98,11 +98,14 @@ async fn rocket() -> _ {
     let storage = Redis::new("redis://127.0.0.1/")
         .await
         .expect("connect to redis");
+    let mq = amqp::RabbitMq::new("amqp://guest:guest@localhost:5672".into());
     let bjs = DeriveHandlerBuilder::new(
-        job_ctx,
-        "fnf-example".into(),
-        "amqp://guest:guest@localhost:5672".into(),
-        Box::new(storage),
+        Config::builder()
+            .name("fnf-example".into())
+            .context(job_ctx)
+            .storage(Box::new(storage))
+            .message_queue_client(Box::new(mq))
+            .build(),
     )
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)

@@ -53,18 +53,23 @@ This generates two types
 For `struct Jobs` a type `JobsBuilder` will be generated. Use this to bootstrap the server.
 
 ```ignore
+use later::{storage::redis::Redis, BackgroundJobServer, mq::amqp, Config};
+
 // bootstrap the server
 let job_ctx = JobContext {};
 let ctx = MyContext{ /*..*/ };                  // Any context to pass onto the handlers
 let storage = Redis::new("redis://127.0.0.1/")  // More storage option to be available later
     .await
     .expect("connect to redis");
+let mq = amqp::RabbitMq::new("amqp://guest:guest@localhost:5672".into()); // RabbitMq instance
 let ctx = JobsBuilder::new(
-        ctx,                                        // Pass the context here
-        "later-example".into(),                     // Unique name for this app
-                                                    // Ensure the this is same in multiple
-                                                    // instances of this app.
-        "amqp://guest:guest@localhost:5672".into(), // RabbitMq instance
+    later::Config::builder()
+        .name("fnf-example".into())             // Unique name for this app
+        .context(job_ctx)                       // Pass the context here
+        .storage(Box::new(storage))             // Configure storage
+        .message_queue_client(Box::new(mq))     // Configure mq
+        // ...
+        .build()
     )
     // for each payload defined in the `struct Jobs` above
     // the generated fn name uses the pattern "with_[name]_handler"

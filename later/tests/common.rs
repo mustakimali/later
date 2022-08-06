@@ -37,7 +37,8 @@ pub async fn create_server(
     let storage = later::storage::redis::Redis::new("redis://127.0.0.1")
         .await
         .expect("connect to redis");
-    let id = format!(
+    let mq = later::mq::amqp::RabbitMq::new("amqp://guest:guest@localhost:5672".into());
+    let name = format!(
         "test-{}{}",
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -47,10 +48,12 @@ pub async fn create_server(
     );
 
     JobServerBuilder::new(
-        job_ctx,
-        id,
-        "amqp://guest:guest@localhost:5672".into(),
-        Box::new(storage),
+        later::Config::builder()
+            .name(name)
+            .context(job_ctx)
+            .storage(Box::new(storage))
+            .message_queue_client(Box::new(mq))
+            .build(),
     )
     .with_test_command_handler(handle_internal)
     .build()

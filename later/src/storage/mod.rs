@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
-
 #[cfg(feature = "postgres")]
 pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
+
+pub mod memory;
 
 #[async_trait::async_trait]
 pub trait Storage: Sync + Send {
@@ -28,30 +28,4 @@ pub trait StorageIter: Sync + Send {
 
     async fn next(&mut self) -> Option<Vec<u8>>;
     async fn count(&mut self) -> usize;
-}
-
-pub struct MemoryStorage {
-    _storage: HashMap<String, String>,
-    _jobs: HashSet<String>,
-}
-
-// impl Storage for MemoryStorage {
-//     fn get(&'_ self, key: &str) -> Option<&'_ str> {
-//         let r = self.storage.get(key).map(|x| x.as_str());
-
-//         r
-//     }
-
-//     fn set(&mut self, key: String, value: String) {
-//         self.storage.insert(key, value);
-//     }
-// }
-
-impl MemoryStorage {
-    pub fn new() -> Self {
-        Self {
-            _storage: Default::default(),
-            _jobs: Default::default(),
-        }
-    }
 }
