@@ -1219,7 +1219,7 @@ dependencies = [
 
 [[package]]
 name = "later"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "async-mutex",
@@ -1242,11 +1242,12 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "typed-builder",
 ]
 
 [[package]]
 name = "later-derive"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -2646,6 +2647,17 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+
+[[package]]
+name = "typed-builder"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89851716b67b937e393b3daa8423e67ddfc4bbbf1654bcf05488e95e0828db0c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "typenum"

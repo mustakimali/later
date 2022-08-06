@@ -1,6 +1,6 @@
 [package]
 name = "later"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2021"
 description = "Distributed Background jobs manager and runner for Rust"
 license = "MIT OR Apache-2.0"
@@ -14,7 +14,7 @@ redis = ["dep:redis"]
 
 [dependencies]
 # internal
-later-derive = { path = "../later-derive", version = "0.0.4"}
+later-derive = { path = "../later-derive", version = "0.0.5"}
 
 # external
 anyhow = "1.0.58"
@@ -35,6 +35,7 @@ cron = "0.11"
 async-std = "1.12.0"
 prometheus = "0.13.1"
 lazy_static = "1.4.0"
+typed-builder = "0.10.0"
 
 sqlx = { optional = true, version = "0.5", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }

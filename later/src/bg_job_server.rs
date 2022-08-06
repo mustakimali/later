@@ -1,14 +1,12 @@
 use crate::{
-    amqp, commands,
+    commands,
     core::BgJobHandler,
     encoder,
     models::{AmqpCommand, ChannelCommand},
+    mq::MqClient,
     BackgroundJobServer, BackgroundJobServerPublisher, UtcDateTime,
 };
-use async_std::{
-    channel::{Receiver, Sender},
-    stream::StreamExt,
-};
+use async_std::channel::{Receiver, Sender};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 impl<C, H> BackgroundJobServer<C, H>
@@ -16,7 +14,7 @@ where
     C: Sync + Send + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    pub async fn start(handler: H) -> anyhow::Result<Self> {
+    pub async fn start(handler: H, mq_client: Arc<Box<dyn MqClient>>) -> anyhow::Result<Self> {
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
@@ -25,14 +23,13 @@ where
 
         // workers to process jobs (distributed)
         for id in 1..num_bg_workers {
-            let amqp_address = publisher._amqp_address.clone();
+            let mq_client = mq_client.clone();
             let routing_key = publisher.routing_key.clone();
             let handler = handler.clone();
             let inproc_tx = tx.clone();
 
             workers.push(tokio::spawn(async move {
-                start_distributed_job_worker(handler, id, &amqp_address, &routing_key, inproc_tx)
-                    .await
+                start_distributed_job_worker(handler, id, mq_client, &routing_key, inproc_tx).await
             }));
         }
 
@@ -167,7 +164,7 @@ where
 async fn start_distributed_job_worker<C, H>(
     handler: Arc<H>,
     worker_id: i32,
-    amqp_address: &str,
+    mq_client: Arc<Box<dyn MqClient>>,
     routing_key: &str,
     inproc_cmd_tx: Sender<ChannelCommand>,
 ) -> anyhow::Result<()>
@@ -177,28 +174,27 @@ where
 {
     println!("[Worker#{}] Starting", worker_id);
 
-    let amqp_client = amqp::Client::new(amqp_address, routing_key);
-    let mut consumer = amqp_client.new_consumer(worker_id).await?;
+    let mut consumer = mq_client.new_consumer(routing_key, worker_id).await?;
 
     while let Some(message) = consumer.next().await {
         match message {
-            Ok(delivery) => match encoder::decode::<AmqpCommand>(&delivery.data) {
+            Ok(delivery) => match encoder::decode::<AmqpCommand>(&delivery.data()) {
                 Ok(command) => {
                     let _ =
                         commands::handle_amqp_command(command, worker_id, &handler, &inproc_cmd_tx)
                             .await;
 
-                    amqp_client.ack(delivery).await?;
+                    delivery.ack().await?;
                 }
                 Err(err) => {
                     println!(
                         "[Worker#{}] Unknown message received [{} bytes]: {}",
                         worker_id,
-                        delivery.data.len(),
+                        delivery.data().len(),
                         err
                     );
 
-                    amqp_client.nack_requeue(delivery).await?;
+                    delivery.nack_requeue().await?;
                 }
             },
             Err(e) => {

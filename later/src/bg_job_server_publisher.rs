@@ -1,31 +1,29 @@
-
 use crate::core::JobParameter;
+use crate::encoder;
 use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
+use crate::mq::MqClient;
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{amqp, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
+use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 impl BackgroundJobServerPublisher {
     pub async fn new(
         id: String,
-        amqp_address: String,
+        mq_client: Arc<Box<dyn MqClient>>,
         storage: Box<dyn Storage>,
     ) -> anyhow::Result<Self> {
         let routing_key = format!("later-{}", id);
-        let channel = amqp::Client::new(&amqp_address, &routing_key)
-            .new_publisher()
-            .await?;
+        let publisher = mq_client.new_publisher(&routing_key).await?;
 
         Ok(Self {
-            _amqp_address: amqp_address,
-            //_connection: connection,
             storage: Persist::new(storage, routing_key.clone()),
 
-            channel: channel,
+            publisher: publisher,
             routing_key: routing_key,
         })
     }
@@ -33,7 +31,7 @@ impl BackgroundJobServerPublisher {
     /// Blocks until there is at least worker available.
     /// This is used during startup to ensure readiness.
     pub async fn ensure_worker_ready(&self) -> anyhow::Result<()> {
-        Ok(self.channel.ensure_consumer().await?)
+        Ok(self.publisher.ensure_consumer().await?)
     }
 
     pub fn get_metrics(&self) -> anyhow::Result<String> {
@@ -205,7 +203,9 @@ impl BackgroundJobServerPublisher {
     }
 
     pub(crate) async fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
-        self.channel.publish(cmd).await?;
+        let message_bytes = encoder::encode(&cmd)?;
+
+        self.publisher.publish(&message_bytes).await?;
 
         Ok(())
     }
