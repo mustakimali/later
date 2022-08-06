@@ -113,7 +113,7 @@ async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
             {
                 tracing::debug!("Job {}: Requeue #{}", job.id, requeue_count);
 
-                let enqueued = job.transition();
+                let enqueued = job.transition(); // Requeued -> Enqueued
                 if let Err(_) = publisher.save(&enqueued).await {
                     continue;
                 }

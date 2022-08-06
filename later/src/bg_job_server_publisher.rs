@@ -154,7 +154,7 @@ impl BackgroundJobServerPublisher {
                 // should be polled
 
                 if delayed.is_time() {
-                    let job = job.transition();
+                    let job = job.transition(); // Delayed -> Enqueued
                     self.save(&job).await?;
 
                     self.handle_job_enqueue_initial(job).await?;
