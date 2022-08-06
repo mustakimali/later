@@ -38,5 +38,5 @@ prometheus = "0.13.1"
 lazy_static = "1.4.0"
 typed-builder = "0.10.0"
 
-sqlx = { optional = true, version = "0.5", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
+sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
