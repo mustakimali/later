@@ -164,7 +164,10 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    ::later::BackgroundJobServer::start(handler).await
+                    let server = ::later::BackgroundJobServer::start(handler).await?;
+                    server.ensure_worker_ready().await?;
+
+                    Ok(server)
                 }
             }
 

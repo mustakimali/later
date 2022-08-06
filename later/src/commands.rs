@@ -20,6 +20,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    println!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
 
     Ok(match command {
@@ -50,7 +51,9 @@ where
         AmqpCommand::ExecuteJob(job) => {
             tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
-            handle_job(job, handler.clone()).await?;
+            if let Some(job) = handler.get_publisher().storage.get_job(job.id).await {
+                handle_job(job, handler.clone()).await?;
+            }
         }
     })
 }

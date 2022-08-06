@@ -254,7 +254,10 @@ mod macro_generated {
                 another_sample_message: self.another_sample_message,
             };
 
-            ::later::BackgroundJobServer::start(handler).await
+            let server = ::later::BackgroundJobServer::start(handler).await?;
+            server.ensure_worker_ready().await?;
+
+            Ok(server)
         }
     }
     impl ::later::core::JobParameter for super::SampleMessage {

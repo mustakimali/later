@@ -55,9 +55,6 @@ where
             }));
         }
 
-        // allow some time for the workers to start up
-        sleep_ms(250).await;
-
         Ok(Self {
             ctx: PhantomData,
             handler: handler,
@@ -69,7 +66,7 @@ where
     // self impl Deref to BackgroundJobServer
 }
 
-async fn sleep_ms(ms: u64) {
+pub(crate) async fn sleep_ms(ms: u64) {
     tokio::time::sleep(Duration::from_millis(ms)).await;
 }
 
@@ -98,7 +95,7 @@ where
 {
     loop {
         let channel_command = rx.recv().await.expect("receive command from channel");
-        sleep_ms(2000).await;
+        sleep_ms(2000).await; // publish system ops after 2s delay
 
         match channel_command {
             ChannelCommand::PollDelayedJobs => {
@@ -147,7 +144,7 @@ where
         )
         .await;
 
-        sleep_ms(10_000).await;
+        sleep_ms(10_000).await; // check again 10s later
     }
 
     // unreachable
@@ -180,8 +177,8 @@ where
 {
     println!("[Worker#{}] Starting", worker_id);
 
-    let amqp_client = amqp::Client::new(amqp_address);
-    let mut consumer = amqp_client.new_consumer(routing_key, worker_id).await?;
+    let amqp_client = amqp::Client::new(amqp_address, routing_key);
+    let mut consumer = amqp_client.new_consumer(worker_id).await?;
 
     while let Some(message) = consumer.next().await {
         match message {
@@ -206,7 +203,7 @@ where
             },
             Err(e) => {
                 println!("[Worker#{}] Consumer ended: {:?}", worker_id, e);
-                break;
+                //break;
             }
         }
     }

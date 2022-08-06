@@ -1,29 +1,24 @@
 #![doc = include_str!("../README.md")]
 use crate::core::BgJobHandler;
 
-use lapin::Channel;
+use amqp::Publisher;
 use persist::Persist;
 use serde::{Deserialize, Serialize};
+use std::{fmt::Display, marker::PhantomData, sync::Arc};
 use tokio::task::JoinHandle;
-
-use std::{
-    fmt::Display,
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
 
 pub use anyhow;
 pub use async_trait;
 pub use futures;
 pub use later_derive::background_job;
 
+mod amqp;
 mod bg_job_server;
 mod bg_job_server_publisher;
 mod commands;
 pub mod core;
 pub mod encoder;
 mod id;
-mod amqp;
 mod metrics;
 mod models;
 mod persist;
@@ -52,7 +47,7 @@ where
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
-    channel: Channel,
+    channel: Publisher,
     routing_key: String,
     storage: Persist,
     //_connection: Connection,

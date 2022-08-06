@@ -1,12 +1,11 @@
+use crate::bg_job_server::sleep_ms;
 use crate::core::JobParameter;
 use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{amqp, encoder, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
+use crate::{amqp, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
-use lapin::options::BasicPublishOptions;
-use lapin::BasicProperties;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -16,8 +15,10 @@ impl BackgroundJobServerPublisher {
         amqp_address: String,
         storage: Box<dyn Storage>,
     ) -> anyhow::Result<Self> {
-        let channel = amqp::Client::new(&amqp_address).new_publisher().await?;
         let routing_key = format!("later-{}", id);
+        let channel = amqp::Client::new(&amqp_address, &routing_key)
+            .new_publisher()
+            .await?;
 
         Ok(Self {
             _amqp_address: amqp_address,
@@ -27,6 +28,12 @@ impl BackgroundJobServerPublisher {
             channel: channel,
             routing_key: routing_key,
         })
+    }
+
+    /// Blocks until there is at least worker available.
+    /// This is used during startup to ensure readiness.
+    pub async fn ensure_worker_ready(&self) -> anyhow::Result<()> {
+        Ok(self.channel.ensure_consumer().await?)
     }
 
     pub fn get_metrics(&self) -> anyhow::Result<String> {
@@ -185,7 +192,7 @@ impl BackgroundJobServerPublisher {
             Stage::Enqueued(_) => {
                 println!("Enqueue job {}", job.id);
 
-                self.publish_amqp_command(AmqpCommand::ExecuteJob(job))
+                self.publish_amqp_command(AmqpCommand::ExecuteJob(job.into()))
                     .await?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
@@ -198,17 +205,7 @@ impl BackgroundJobServerPublisher {
     }
 
     pub(crate) async fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
-        let message_bytes = encoder::encode(cmd)?;
-
-        self.channel
-            .basic_publish(
-                "",
-                &self.routing_key,
-                BasicPublishOptions::default(),
-                &message_bytes,
-                BasicProperties::default(),
-            )
-            .await?;
+        self.channel.publish(cmd).await?;
 
         Ok(())
     }

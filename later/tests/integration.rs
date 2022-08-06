@@ -1,10 +1,8 @@
 #![cfg(feature = "redis")]
 
+use async_std::sync::{Arc, Mutex};
 use common::*;
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::time::Duration;
 
 mod common;
 
