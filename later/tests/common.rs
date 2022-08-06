@@ -86,7 +86,7 @@ async fn handle_internal(
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
         Outcome::Delay(delay_ms) => {
-            sleep_blocking_ms(delay_ms);
+            sleep_ms(delay_ms).await;
             Ok(())
         }
     }
@@ -141,8 +141,4 @@ fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<TestCommand>>) -> usiz
 
 async fn sleep_ms(ms: usize) {
     tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
-}
-
-fn sleep_blocking_ms(ms: usize) {
-    std::thread::sleep(std::time::Duration::from_millis(ms as u64))
 }

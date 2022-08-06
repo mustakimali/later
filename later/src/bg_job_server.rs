@@ -56,7 +56,7 @@ where
         }
 
         // allow some time for the workers to start up
-        std::thread::sleep(Duration::from_millis(250));
+        sleep_ms(250).await;
 
         Ok(Self {
             ctx: PhantomData,
@@ -67,6 +67,10 @@ where
 
     // `enqueue`, `enqueue_continue` etc. available as
     // self impl Deref to BackgroundJobServer
+}
+
+async fn sleep_ms(ms: u64) {
+    tokio::time::sleep(Duration::from_millis(ms)).await;
 }
 
 impl<C, H> std::ops::Deref for BackgroundJobServer<C, H>
@@ -94,7 +98,7 @@ where
 {
     loop {
         let channel_command = rx.recv().await.expect("receive command from channel");
-        std::thread::sleep(Duration::from_secs(2));
+        sleep_ms(2000).await;
 
         match channel_command {
             ChannelCommand::PollDelayedJobs => {
@@ -122,7 +126,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    std::thread::sleep(Duration::from_secs(3)); // wait for existing commands to be processed
+    sleep_ms(3_000).await; // wait for existing commands to be processed
 
     loop {
         let config = handler.get_publisher().storage.config();
@@ -143,7 +147,7 @@ where
         )
         .await;
 
-        std::thread::sleep(Duration::from_secs(10));
+        sleep_ms(10_000).await;
     }
 
     // unreachable
@@ -200,8 +204,8 @@ where
                     amqp_client.nack_requeue(delivery).await?;
                 }
             },
-            other => {
-                println!("[Worker#{}] Consumer ended: {:?}", worker_id, other);
+            Err(e) => {
+                println!("[Worker#{}] Consumer ended: {:?}", worker_id, e);
                 break;
             }
         }

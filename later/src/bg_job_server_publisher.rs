@@ -143,6 +143,11 @@ impl BackgroundJobServerPublisher {
 
     #[async_recursion::async_recursion]
     pub(crate) async fn handle_job_enqueue_initial(&self, job: Job) -> anyhow::Result<()> {
+        println!(
+            "handle_job_enqueue_initial: Id: {}, Stage: {:?}",
+            &job.id, &job.stage
+        );
+
         match &job.stage {
             Stage::Delayed(delayed) => {
                 // delayed job
@@ -184,8 +189,8 @@ impl BackgroundJobServerPublisher {
                     .await?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
-                println!("Enqueue job {}", job.id);
-                unreachable!("stage is handled in consumer")
+                println!("Invalid job here {}, Stage {:?}", job.id, &job.stage);
+                //unreachable!("stage is handled in consumer")
             }
         }
 
@@ -195,8 +200,7 @@ impl BackgroundJobServerPublisher {
     pub(crate) async fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
         let message_bytes = encoder::encode(cmd)?;
 
-        self
-            .channel
+        self.channel
             .basic_publish(
                 "",
                 &self.routing_key,
