@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["redis"]
 all = ["postgres", "redis"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis"]
