@@ -2,12 +2,27 @@ use std::fmt::Display;
 
 use crate::{JobId, UtcDateTime};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "ty")]
 pub(crate) enum AmqpCommand {
     PollDelayedJobs,
     PollRequeuedJobs,
-    ExecuteJob(Job),
+    ExecuteJob(JobAmqp),
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct JobAmqp {
+    pub payload_type: String,
+    pub id: JobId,
+}
+
+impl From<Job> for JobAmqp {
+    fn from(j: Job) -> Self {
+        Self {
+            payload_type: j.payload_type,
+            id: j.id,
+        }
+    }
 }
 
 impl AmqpCommand {
@@ -242,7 +257,7 @@ impl Stage {
             Stage::Enqueued(_) => Stage::Running(RunningStage {
                 date: chrono::Utc::now(),
             }),
-            Stage::Running(_) => todo!(),
+            Stage::Running(_) => self,
             Stage::Requeued(_) => Stage::Enqueued(EnqueuedStage {
                 date: chrono::Utc::now(),
             }),

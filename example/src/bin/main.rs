@@ -42,23 +42,32 @@ async fn handle_another_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
-    let id = _ctx
+    let prefix = format!("{}-cont", payload.txt);
+    let parent_job_id = _ctx
         .enqueue(SampleMessage {
-            txt: "test".to_string(),
+            txt: format!("{}-1", prefix),
         })
         .await?;
-    let id2 = _ctx
+    let child_job_1_id = _ctx
         .enqueue_continue(
-            id.clone(),
+            parent_job_id.clone(),
             SampleMessage {
-                txt: format!("Continuation of job {}", id),
+                txt: format!("{}-2", prefix),
+            },
+        )
+        .await?;
+    let child_job_2_id = _ctx
+        .enqueue_continue(
+            parent_job_id.clone(),
+            SampleMessage {
+                txt: format!("{}-3", prefix),
             },
         )
         .await?;
 
     println!(
-        "On Handle handle_another_sample_message: {:?}, enqueued: {}, {}",
-        payload, id, id2
+        "On Handle handle_another_sample_message: {:?}, enqueued: cont-1:{}, cont-2(c): {}, cont-3(c): {}",
+        payload, parent_job_id, child_job_1_id, child_job_2_id
     );
 
     Ok(())
@@ -71,7 +80,9 @@ struct AppContext {
 #[get("/")]
 async fn hello(state: &State<AppContext>) -> String {
     let id = later::generate_id();
-    let msg = AnotherSampleMessage { txt: id };
+    let msg = AnotherSampleMessage {
+        txt: format!("{id}-1"),
+    };
     state.jobs.enqueue(msg).await.expect("Enqueue Job");
     "Hello, world!".to_string()
 }
@@ -96,6 +107,7 @@ async fn rocket() -> _ {
     .with_sample_message_handler(handle_sample_message)
     .with_another_sample_message_handler(handle_another_sample_message)
     .build()
+    .await
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };

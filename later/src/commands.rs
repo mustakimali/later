@@ -1,13 +1,11 @@
-use std::{sync::Arc, time::Duration};
-
-use async_std::channel::Sender;
-
 use crate::{
     core::BgJobHandler,
     encoder, metrics,
     models::{AmqpCommand, ChannelCommand, Job, RequeuedStage, Stage},
     JobId,
 };
+use async_std::channel::Sender;
+use std::{sync::Arc, time::Duration};
 
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
@@ -19,8 +17,8 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    let cmd_ty = command.get_type();
-    metrics::COUNTER.record_command(&cmd_ty);
+    println!("Amqp Command: {:?}", command);
+    metrics::COUNTER.record_command(&command);
 
     Ok(match command {
         AmqpCommand::PollDelayedJobs => {
@@ -48,11 +46,11 @@ where
             let _ = inproc_cmd_tx.send(ChannelCommand::PollRequeuedJobs).await;
         }
         AmqpCommand::ExecuteJob(job) => {
-            metrics::COUNTER.record_job(&cmd_ty);
-
             tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
-            handle_job(job, handler.clone()).await?;
+            if let Some(job) = handler.get_publisher().storage.get_job(job.id).await {
+                handle_job(job, handler.clone()).await?;
+            }
         }
     })
 }
@@ -115,7 +113,7 @@ async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
             {
                 tracing::debug!("Job {}: Requeue #{}", job.id, requeue_count);
 
-                let enqueued = job.transition();
+                let enqueued = job.transition(); // Requeued -> Enqueued
                 if let Err(_) = publisher.save(&enqueued).await {
                     continue;
                 }

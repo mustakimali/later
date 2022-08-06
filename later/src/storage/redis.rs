@@ -66,6 +66,15 @@ impl Storage for Redis {
         Ok(self.connection.lock().await.del(key).await?)
     }
 
+    async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()> {
+        self.connection
+            .lock()
+            .await
+            .expire(key, ttl_sec)
+            .await
+            .map_err(anyhow::Error::from)
+    }
+
     async fn del_range(&self, key: &str) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let start_key = format!("{}-start", key);

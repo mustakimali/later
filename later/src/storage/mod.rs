@@ -11,6 +11,8 @@ pub trait Storage: Sync + Send {
     async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn del(&self, key: &str) -> anyhow::Result<()>;
 
+    async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()>;
+
     // hashset
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;

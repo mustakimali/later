@@ -1,8 +1,8 @@
+use async_std::sync::{Arc, Mutex, MutexGuard};
 use later::BackgroundJobServer;
 use serde::{Deserialize, Serialize};
 use std::{
     ops::Add,
-    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, SystemTime},
 };
 
@@ -54,6 +54,7 @@ pub async fn create_server(
     )
     .with_test_command_handler(handle_internal)
     .build()
+    .await
     .expect("start bg server")
 }
 
@@ -62,7 +63,7 @@ async fn handle_internal(
     payload: TestCommand,
 ) -> anyhow::Result<()> {
     let retry_count = {
-        let mut invc = ctx.app.invc.lock().expect("acquire lock to invc");
+        let mut invc = ctx.app.invc.lock().await;
         invc.push(payload.clone());
 
         println!("[TEST] Command received {}", payload.name.clone());
@@ -85,7 +86,7 @@ async fn handle_internal(
             false => Err(anyhow::anyhow!("Failed, to test retry...")),
         },
         Outcome::Delay(delay_ms) => {
-            sleep_blocking_ms(delay_ms);
+            sleep_ms(delay_ms).await;
             Ok(())
         }
     }
@@ -107,12 +108,12 @@ pub async fn assert_invocations_with_delay(
         .add(Duration::from_secs(1));
 
     while SystemTime::now().duration_since(start).unwrap() < test_timeout
-        && count_of_invocation_for(ty, &inv.lock().unwrap()) != expected_num
+        && count_of_invocation_for(ty, &inv.lock().await) != expected_num
     {
         sleep_ms(250).await;
     }
 
-    let invocations = count_of_invocation_for(ty, &inv.lock().unwrap());
+    let invocations = count_of_invocation_for(ty, &inv.lock().await);
 
     assert_eq!(
         expected_num, invocations,
@@ -140,8 +141,4 @@ fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<TestCommand>>) -> usiz
 
 async fn sleep_ms(ms: usize) {
     tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await
-}
-
-fn sleep_blocking_ms(ms: usize) {
-    std::thread::sleep(std::time::Duration::from_millis(ms as u64))
 }

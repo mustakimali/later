@@ -1,12 +1,14 @@
 use crate::{
-    commands,
+    amqp, commands,
     core::BgJobHandler,
     encoder,
     models::{AmqpCommand, ChannelCommand},
     BackgroundJobServer, BackgroundJobServerPublisher, UtcDateTime,
 };
-use amiquip::{Connection, ConsumerOptions, QueueDeclareOptions};
-use async_std::channel::{Receiver, Sender};
+use async_std::{
+    channel::{Receiver, Sender},
+    stream::StreamExt,
+};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 impl<C, H> BackgroundJobServer<C, H>
@@ -14,7 +16,7 @@ where
     C: Sync + Send + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    pub fn start(handler: H) -> anyhow::Result<Self> {
+    pub async fn start(handler: H) -> anyhow::Result<Self> {
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
@@ -28,30 +30,30 @@ where
             let handler = handler.clone();
             let inproc_tx = tx.clone();
 
-            workers.push(std::thread::spawn(move || {
+            workers.push(tokio::spawn(async move {
                 start_distributed_job_worker(handler, id, &amqp_address, &routing_key, inproc_tx)
+                    .await
             }));
         }
 
         let handler_for_ensure_ops = handler.clone();
-        workers.push(std::thread::spawn(move || {
+        workers.push(tokio::spawn(async move {
             start_bg_worker_system_ops_ensure_ops_run_on_certain_interval(
                 handler_for_ensure_ops,
                 tx.clone(),
             )
+            .await
         }));
 
         for _ in 1..2 {
             let rx_clone = rx.clone();
             let handler_for_check_ops = handler.clone();
 
-            workers.push(std::thread::spawn(move || {
+            workers.push(tokio::spawn(async move {
                 start_bg_worker_system_ops_inproc_cmd_to_amqp_cmd(handler_for_check_ops, rx_clone)
+                    .await
             }));
         }
-
-        // allow some time for the workers to start up
-        std::thread::sleep(Duration::from_millis(250));
 
         Ok(Self {
             ctx: PhantomData,
@@ -62,6 +64,10 @@ where
 
     // `enqueue`, `enqueue_continue` etc. available as
     // self impl Deref to BackgroundJobServer
+}
+
+pub(crate) async fn sleep_ms(ms: u64) {
+    tokio::time::sleep(Duration::from_millis(ms)).await;
 }
 
 impl<C, H> std::ops::Deref for BackgroundJobServer<C, H>
@@ -79,7 +85,7 @@ where
 /// listens for commands on an in-process queue,
 /// then waits a few moments and publish/enqueue an amqp
 /// command to execute system operations (like polling for certain jobs etc.)
-fn start_bg_worker_system_ops_inproc_cmd_to_amqp_cmd<C, H>(
+async fn start_bg_worker_system_ops_inproc_cmd_to_amqp_cmd<C, H>(
     handler: Arc<H>,
     rx: Receiver<ChannelCommand>,
 ) -> anyhow::Result<()>
@@ -87,33 +93,29 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
     loop {
-        let channel_command = rt
-            .block_on(rx.recv())
-            .expect("receive command from channel");
-        std::thread::sleep(Duration::from_secs(2));
+        let channel_command = rx.recv().await.expect("receive command from channel");
+        sleep_ms(2000).await; // publish system ops after 2s delay
 
         match channel_command {
             ChannelCommand::PollDelayedJobs => {
                 handler
                     .get_publisher()
-                    .publish_amqp_command(AmqpCommand::PollDelayedJobs)?;
+                    .publish_amqp_command(AmqpCommand::PollDelayedJobs)
+                    .await?;
             }
             ChannelCommand::PollRequeuedJobs => {
                 handler
                     .get_publisher()
-                    .publish_amqp_command(AmqpCommand::PollRequeuedJobs)?;
+                    .publish_amqp_command(AmqpCommand::PollRequeuedJobs)
+                    .await?;
             }
         }
     }
 }
 
 /// Every 10 secs, ensure some system operations are run - otherwise enqueue them
-fn start_bg_worker_system_ops_ensure_ops_run_on_certain_interval<C, H>(
+async fn start_bg_worker_system_ops_ensure_ops_run_on_certain_interval<C, H>(
     handler: Arc<H>,
     tx: Sender<ChannelCommand>,
 ) -> anyhow::Result<()>
@@ -121,11 +123,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-
-    std::thread::sleep(Duration::from_secs(3)); // wait for existing commands to be processed
+    sleep_ms(3_000).await; // wait for existing commands to be processed
 
     loop {
         let config = handler.get_publisher().storage.config();
@@ -133,23 +131,25 @@ where
         enqueue_if(
             &tx,
             ChannelCommand::PollDelayedJobs,
-            rt.block_on(config.poll_delayed_jobs_last_run()),
+            config.poll_delayed_jobs_last_run().await,
             10,
-        );
+        )
+        .await;
 
         enqueue_if(
             &tx,
             ChannelCommand::PollRequeuedJobs,
-            rt.block_on(config.poll_requeued_jobs_last_run()),
+            config.poll_requeued_jobs_last_run().await,
             10,
-        );
+        )
+        .await;
 
-        std::thread::sleep(Duration::from_secs(10));
+        sleep_ms(10_000).await; // check again 10s later
     }
 
     // unreachable
 
-    fn enqueue_if(
+    async fn enqueue_if(
         tx: &Sender<ChannelCommand>,
         cmd: ChannelCommand,
         last_run: UtcDateTime,
@@ -159,16 +159,12 @@ where
         if last_run_since.num_seconds() > if_not_sec {
             println!("Ops {} did not run for a while: Enqueuing", cmd);
 
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            let _ = rt.block_on(tx.send(cmd));
+            let _ = tx.send(cmd).await;
         }
     }
 }
 
-fn start_distributed_job_worker<C, H>(
+async fn start_distributed_job_worker<C, H>(
     handler: Arc<H>,
     worker_id: i32,
     amqp_address: &str,
@@ -180,53 +176,34 @@ where
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
     println!("[Worker#{}] Starting", worker_id);
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
 
-    let mut connection = Connection::insecure_open(&amqp_address)?;
-    let channel = connection.open_channel(None)?;
-    let queue = channel.queue_declare(
-        routing_key,
-        QueueDeclareOptions {
-            durable: true,
-            auto_delete: true,
-            ..Default::default()
-        },
-    )?;
-    let consumer = queue.consume(ConsumerOptions {
-        no_ack: false,
-        ..Default::default()
-    })?;
+    let amqp_client = amqp::Client::new(amqp_address, routing_key);
+    let mut consumer = amqp_client.new_consumer(worker_id).await?;
 
-    for (i, message) in consumer.receiver().iter().enumerate() {
+    while let Some(message) = consumer.next().await {
         match message {
-            amiquip::ConsumerMessage::Delivery(delivery) => {
-                match encoder::decode::<AmqpCommand>(&delivery.body) {
-                    Ok(command) => {
-                        let _ = rt.block_on(commands::handle_amqp_command(
-                            command,
-                            worker_id,
-                            &handler,
-                            &inproc_cmd_tx,
-                        ));
-                        consumer.ack(delivery)?;
-                    }
-                    Err(err) => {
-                        println!(
-                            "[Worker#{}] ({:>3}) Unknown message received [{} bytes]: {}",
-                            worker_id,
-                            i,
-                            delivery.body.len(),
-                            err
-                        );
-                        consumer.nack(delivery, false)?;
-                    }
+            Ok(delivery) => match encoder::decode::<AmqpCommand>(&delivery.data) {
+                Ok(command) => {
+                    let _ =
+                        commands::handle_amqp_command(command, worker_id, &handler, &inproc_cmd_tx)
+                            .await;
+
+                    amqp_client.ack(delivery).await?;
                 }
-            }
-            other => {
-                println!("[Worker#{}] Consumer ended: {:?}", worker_id, other);
-                break;
+                Err(err) => {
+                    println!(
+                        "[Worker#{}] Unknown message received [{} bytes]: {}",
+                        worker_id,
+                        delivery.data.len(),
+                        err
+                    );
+
+                    amqp_client.nack_requeue(delivery).await?;
+                }
+            },
+            Err(e) => {
+                println!("[Worker#{}] Consumer ended: {:?}", worker_id, e);
+                //break;
             }
         }
     }

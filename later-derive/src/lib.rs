@@ -148,13 +148,13 @@ impl ToTokens for TraitImpl {
 
                 #(#builder_methods)*
 
-                pub fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
+                pub async fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
                 {
                     let publisher = later::BackgroundJobServerPublisher::new(
                         self.id.clone(),
                         self.amqp_address.clone(),
                         self.storage,
-                    )?;
+                    ).await?;
                     let ctx_inner = #inner_type_name {
                         job: publisher,
                         app: self.ctx,
@@ -164,7 +164,10 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    ::later::BackgroundJobServer::start(handler)
+                    let server = ::later::BackgroundJobServer::start(handler).await?;
+                    server.ensure_worker_ready().await?;
+
+                    Ok(server)
                 }
             }
 

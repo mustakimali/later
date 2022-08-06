@@ -1,23 +1,18 @@
 #![doc = include_str!("../README.md")]
 use crate::core::BgJobHandler;
 
-use amiquip::{Channel, Connection};
-
+use amqp::Publisher;
 use persist::Persist;
 use serde::{Deserialize, Serialize};
-
-use std::{
-    fmt::Display,
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-    thread::JoinHandle,
-};
+use std::{fmt::Display, marker::PhantomData, sync::Arc};
+use tokio::task::JoinHandle;
 
 pub use anyhow;
 pub use async_trait;
 pub use futures;
 pub use later_derive::background_job;
 
+mod amqp;
 mod bg_job_server;
 mod bg_job_server_publisher;
 mod commands;
@@ -27,6 +22,7 @@ mod id;
 mod metrics;
 mod models;
 mod persist;
+mod stats;
 pub mod storage;
 
 pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
@@ -51,10 +47,10 @@ where
 
 pub struct BackgroundJobServerPublisher {
     _amqp_address: String,
-    channel: Arc<Mutex<Channel>>,
+    channel: Publisher,
     routing_key: String,
     storage: Persist,
-    _connection: Connection,
+    //_connection: Connection,
 }
 
 pub fn generate_id() -> String {

@@ -1,33 +1,39 @@
+
 use crate::core::JobParameter;
 use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
-use amiquip::{Connection, Exchange, Publish};
+use crate::{amqp, metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 impl BackgroundJobServerPublisher {
-    pub fn new(
+    pub async fn new(
         id: String,
         amqp_address: String,
         storage: Box<dyn Storage>,
     ) -> anyhow::Result<Self> {
-        let mut connection = Connection::insecure_open(&amqp_address)?;
-        let channel = connection.open_channel(None)?;
         let routing_key = format!("later-{}", id);
+        let channel = amqp::Client::new(&amqp_address, &routing_key)
+            .new_publisher()
+            .await?;
 
         Ok(Self {
             _amqp_address: amqp_address,
-            _connection: connection,
+            //_connection: connection,
             storage: Persist::new(storage, routing_key.clone()),
 
-            channel: Arc::new(Mutex::new(channel)),
+            channel: channel,
             routing_key: routing_key,
         })
+    }
+
+    /// Blocks until there is at least worker available.
+    /// This is used during startup to ensure readiness.
+    pub async fn ensure_worker_ready(&self) -> anyhow::Result<()> {
+        Ok(self.channel.ensure_consumer().await?)
     }
 
     pub fn get_metrics(&self) -> anyhow::Result<String> {
@@ -86,7 +92,7 @@ impl BackgroundJobServerPublisher {
         message: impl JobParameter,
         parent_job_id: Option<JobId>,
         delay_until: Option<UtcDateTime>,
-        cron_schedule: Option<cron::Schedule>,
+        _cron_schedule: Option<cron::Schedule>,
     ) -> anyhow::Result<JobId> {
         let id = crate::generate_id();
 
@@ -144,13 +150,18 @@ impl BackgroundJobServerPublisher {
 
     #[async_recursion::async_recursion]
     pub(crate) async fn handle_job_enqueue_initial(&self, job: Job) -> anyhow::Result<()> {
+        println!(
+            "handle_job_enqueue_initial: Id: {}, Stage: {:?}",
+            &job.id, &job.stage
+        );
+
         match &job.stage {
             Stage::Delayed(delayed) => {
                 // delayed job
                 // should be polled
 
                 if delayed.is_time() {
-                    let job = job.transition();
+                    let job = job.transition(); // Delayed -> Enqueued
                     self.save(&job).await?;
 
                     self.handle_job_enqueue_initial(job).await?;
@@ -181,22 +192,20 @@ impl BackgroundJobServerPublisher {
             Stage::Enqueued(_) => {
                 println!("Enqueue job {}", job.id);
 
-                self.publish_amqp_command(AmqpCommand::ExecuteJob(job))?
+                self.publish_amqp_command(AmqpCommand::ExecuteJob(job.into()))
+                    .await?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
-                unreachable!("stage is handled in consumer")
+                println!("Invalid job here {}, Stage {:?}", job.id, &job.stage);
+                //unreachable!("stage is handled in consumer")
             }
         }
 
         Ok(())
     }
 
-    pub(crate) fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
-        let message_bytes = encoder::encode(cmd)?;
-        let channel = self.channel.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        let exchange = Exchange::direct(&channel);
-
-        exchange.publish(Publish::new(&message_bytes, self.routing_key.clone()))?;
+    pub(crate) async fn publish_amqp_command(&self, cmd: AmqpCommand) -> anyhow::Result<()> {
+        self.channel.publish(cmd).await?;
 
         Ok(())
     }
