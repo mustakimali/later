@@ -7,6 +7,7 @@ lazy_static! {
     pub(crate) static ref COUNTER: Metrics = Metrics::new();
 }
 
+#[allow(dead_code)]
 pub(crate) struct Metrics {
     pub commands_all: IntCounterVec,
     pub commands_failed: IntCounterVec,

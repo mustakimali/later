@@ -1,4 +1,4 @@
-use crate::bg_job_server::sleep_ms;
+
 use crate::core::JobParameter;
 use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
@@ -92,7 +92,7 @@ impl BackgroundJobServerPublisher {
         message: impl JobParameter,
         parent_job_id: Option<JobId>,
         delay_until: Option<UtcDateTime>,
-        cron_schedule: Option<cron::Schedule>,
+        _cron_schedule: Option<cron::Schedule>,
     ) -> anyhow::Result<JobId> {
         let id = crate::generate_id();
 

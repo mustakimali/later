@@ -1,14 +1,11 @@
-use std::{sync::Arc, time::Duration};
-
-use async_std::channel::Sender;
-use tracing::Span;
-
 use crate::{
     core::BgJobHandler,
     encoder, metrics,
     models::{AmqpCommand, ChannelCommand, Job, RequeuedStage, Stage},
     JobId,
 };
+use async_std::channel::Sender;
+use std::{sync::Arc, time::Duration};
 
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
