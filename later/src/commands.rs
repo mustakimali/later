@@ -17,7 +17,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    println!("Amqp Command: {:?}", command);
+    tracing::debug!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
 
     Ok(match command {

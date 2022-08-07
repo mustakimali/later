@@ -92,6 +92,12 @@ impl Storage for Redis {
             self.del(&item_key).await?;
         }
 
+        // delete start + count
+        self.del(&start_key).await?;
+        self.del(&count_key).await?;
+
+        // ToDo: make atomic
+
         Ok(())
     }
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
