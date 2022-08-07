@@ -10,9 +10,8 @@
 //! ### 1. Import `later` and required dependencies
 //! 
 //! ```toml
-//! later = { version = "0.0.5", features = ["redis"] }
+//! later = { version = "0.0.6", features = ["redis"] }
 //! serde = "1.0"
-//! 
 //! ```
 //! 
 //! ### 2. Define some types to use as a payload to the background jobs
@@ -27,7 +26,6 @@
 //! }
 //! 
 //! // ... more as required
-//! 
 //! ```
 //! 
 //! ### 3. Generate the stub
@@ -40,7 +38,6 @@
 //! #     pub address: String,
 //! #     pub body: String,
 //! # }
-//! 
 //! later::background_job! {
 //!     struct Jobs {
 //!         send_email: SendEmail,
@@ -67,8 +64,6 @@
 //! #         send_email: SendEmail,
 //! #     }
 //! # }
-//! 
-//! 
 //! use later::{storage::redis::Redis, BackgroundJobServer, mq::amqp, Config};
 //! 
 //! # #[tokio::main]
@@ -105,14 +100,14 @@
 //!         ctx: JobsContext<MyContext>, // JobContext is generated wrapper
 //!         payload: SendEmail,
 //!     ) -> anyhow::Result<()> {
-//!         // handle `payload`
+//!     // handle `payload`
 //! 
-//!         // ctx.app -> Access the MyContext passed during bootstrapping
-//!         // ctx.enqueue(_).await to enqueue more jobs
-//!         // ctx.enqueue_continue(_).await to chain jobs
+//!     // ctx.app -> Access the MyContext passed during bootstrapping
+//!     // ctx.enqueue(_).await to enqueue more jobs
+//!     // ctx.enqueue_continue(_).await to chain jobs
 //! 
-//!         Ok(()) // or Err(_) to retry this message
-//!     }
+//!     Ok(()) // or Err(_) to retry this message
+//! }
 //! ```
 //! 
 //! </details>
@@ -123,16 +118,22 @@
 //! 
 //! Fire and forget jobs are executed only once and executed by an available worker almost immediately.
 //! 
-//! ```ignore
-//! # #[derive(Serialize, Deserialize)]
+//! ```no_run
+//! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct SendEmail { pub address: String, pub body: String }
+//! # later::background_job! {
+//! #     struct Jobs {
+//! #         send_email: SendEmail,
+//! #     }
+//! # }
 //! # #[tokio::main]
-//! # async fn main() {
+//! # async fn main() -> anyhow::Result<()>{
 //! # let ctx : later::BackgroundJobServerPublisher = todo!();
 //! ctx.enqueue(SendEmail{
 //!     address: "hello@rust-lang.org".to_string(),
 //!     body: "You rock!".to_string() 
-//! }).await;
+//! }).await?;
+//! # Ok(())
 //! # }
 //! ```
 //! 
@@ -140,23 +141,32 @@
 //! 
 //! One or many jobs are chained together to create an workflow. Child jobs are executed **only when parent job has been finished**.
 //! 
-//! ```ignore
-//! # #[derive(Serialize, Deserialize)]
+//! ```no_run
+//! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct SendEmail { pub address: String, pub body: String }
+//! # later::background_job! {
+//! #     struct Jobs {
+//! #         send_email: SendEmail,
+//! #         create_account: CreateAccount,
+//! #     }
+//! # }
+//! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct CreateAccount { id: String }
 //! # #[tokio::main]
-//! # async fn main() {
+//! # async fn main() -> anyhow::Result<()>{
+//! # let ctx : later::BackgroundJobServerPublisher = todo!();
 //! let email_welcome = ctx.enqueue(SendEmail{
 //!     address: "customer@example.com".to_string(),
 //!     body: "Creating your account!".to_string() 
-//! }).await;
+//! }).await?;
 //! 
-//! let create_account = ctx.enqueue_continue(email_welcome, CreateAccount { id: "accout-1".to_string() }).await;
+//! let create_account = ctx.enqueue_continue(email_welcome, CreateAccount { id: "accout-1".to_string() }).await?;
 //! 
 //! let email_confirmation = ctx.enqueue_continue(create_account, SendEmail{
 //!     address: "customer@example.com".to_string(),
 //!     body: "Your account has been created!".to_string() 
 //! }).await;
+//! # Ok(())
 //! # }
 //! ```
 //! 
@@ -164,23 +174,30 @@
 //! 
 //! Just like fire and forget jobs that starts after a certain interval.
 //! 
-//! ```ignore
-//! # #[derive(Serialize, Deserialize)]
+//! ```no_run
+//! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct SendEmail { pub address: String, pub body: String }
+//! # later::background_job! {
+//! #     struct Jobs {
+//! #         send_email: SendEmail,
+//! #     }
+//! # }
 //! # #[tokio::main]
-//! # async fn main() {
+//! # async fn main() -> anyhow::Result<()>{
+//! # let ctx : later::BackgroundJobServerPublisher = todo!();
 //! // delay
 //! ctx.enqueue_delayed(SendEmail{
 //!     address: "hello@rust-lang.org".to_string(),
 //!     body: "You rock!".to_string() 
-//! }, std::time::Duration::from_secs(60)).await;
+//! }, std::time::Duration::from_secs(60)).await?;
 //! 
 //! // specific time
-//! let run_job_at : chrono::DateTime<Utc> = ...;
+//! let run_job_at : chrono::DateTime<chrono::Utc> = todo!();
 //! ctx.enqueue_delayed_at(SendEmail{
 //!     address: "hello@rust-lang.org".to_string(),
 //!     body: "You rock!".to_string() 
-//! }, run_job_at).await;
+//! }, run_job_at).await?;
+//! # Ok(())
 //! # }
 //! ```
 //! 
