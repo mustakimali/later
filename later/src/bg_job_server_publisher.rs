@@ -1,10 +1,10 @@
 use crate::core::JobParameter;
-use crate::encoder;
 use crate::models::{AmqpCommand, Job};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::mq::MqClient;
 use crate::persist::Persist;
 use crate::storage::Storage;
+use crate::{encoder, generate_id};
 use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
 use std::str::FromStr;
@@ -77,8 +77,10 @@ impl BackgroundJobServerPublisher {
     ) -> anyhow::Result<JobId> {
         let cron_schedule =
             cron::Schedule::from_str(&cron).context("error parsing cron expression")?;
-        self.enqueue_internal(message, None, None, Some(cron_schedule))
-            .await
+        // self.enqueue_internal(message, None, None, Some(cron_schedule))
+        //     .await
+
+        Ok(JobId(generate_id()))
     }
 
     pub async fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {

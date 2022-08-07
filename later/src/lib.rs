@@ -232,7 +232,7 @@ mod persist;
 mod stats;
 pub mod storage;
 
-pub(crate) type UtcDateTime = chrono::DateTime<chrono::Utc>;
+pub type UtcDateTime = chrono::DateTime<chrono::Utc>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JobId(String);
