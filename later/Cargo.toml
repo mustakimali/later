@@ -21,7 +21,7 @@ later-derive = { path = "../later-derive", version = "0.0.5"}
 anyhow = "1.0.58"
 rusty_ulid = "1.0.0"
 lapin = "2.1.1"
-tokio = { version = "1.19.2", features = ["full"]}
+tokio = { version = "1.20.1", features = ["full"]}
 serde = "1.0"
 serde_derive = "1.0"
 rmp-serde = "1.1"
