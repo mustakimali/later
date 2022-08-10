@@ -120,7 +120,7 @@ pub async fn assert_invocations_with_delay(
     let start = SystemTime::now();
     let test_timeout = expected_delay
         .unwrap_or_else(|| Duration::from_secs(10))
-        .add(Duration::from_secs(3));
+        .add(Duration::from_secs(5));
 
     while SystemTime::now().duration_since(start).unwrap() < test_timeout
         && count_of_invocation_for(ty, &inv.lock().await) != expected_num

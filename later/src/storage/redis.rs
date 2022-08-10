@@ -135,7 +135,7 @@ impl Storage for Redis {
         let end = range.get_index();
         for i in start..end {
             let key = get_scan_item_key(&key, i);
-            let _ = self.del(&key);
+            let _ = self.del(&key).await;
         }
 
         Ok(())
@@ -180,7 +180,7 @@ impl StorageIter for ScanRange {
     }
 
     async fn next(&mut self) -> Option<Vec<u8>> {
-        if self.count == 0 {
+        if self.count == 0 || self.index == self.count {
             return None;
         }
 
@@ -346,5 +346,54 @@ mod test_redis {
         let _ = storage.trim(&range).await;
 
         assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
+    }
+
+    #[tokio::test]
+    async fn range_trim_10_items() {
+        let key = format!("key-{}", crate::generate_id());
+
+        let storage = create_client().await;
+
+        storage.push(&key, "item-1".as_bytes()).await.unwrap();
+        storage.push(&key, "item-2".as_bytes()).await.unwrap();
+        storage.push(&key, "item-3".as_bytes()).await.unwrap();
+        storage.push(&key, "item-4".as_bytes()).await.unwrap();
+        storage.push(&key, "item-5".as_bytes()).await.unwrap();
+        storage.push(&key, "item-6".as_bytes()).await.unwrap();
+        storage.push(&key, "item-7".as_bytes()).await.unwrap();
+        storage.push(&key, "item-8".as_bytes()).await.unwrap();
+        storage.push(&key, "item-9".as_bytes()).await.unwrap();
+        storage.push(&key, "item-10".as_bytes()).await.unwrap();
+
+        let mut range = storage.scan_range(&key).await;
+        assert!(range.next().await.is_some());
+        assert!(range.next().await.is_some());
+        assert!(range.next().await.is_some());
+        assert!(range.next().await.is_some());
+        assert!(range.next().await.is_some());
+
+        storage.trim(&range).await.unwrap();
+
+        let mut range = storage.scan_range(&key).await;
+        assert_eq!(
+            "item-6",
+            &String::from_utf8(range.next().await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            "item-7",
+            &String::from_utf8(range.next().await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            "item-8",
+            &String::from_utf8(range.next().await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            "item-9",
+            &String::from_utf8(range.next().await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            "item-10",
+            &String::from_utf8(range.next().await.unwrap()).unwrap()
+        );
     }
 }
