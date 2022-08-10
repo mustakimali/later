@@ -158,20 +158,44 @@ async fn integration_recurring() {
 
     job_server
         .enqueue_recurring(
+            "recurring-job-1".to_string(),
             TestCommand {
                 name: "schedule".to_string(),
                 outcome: Outcome::Delay(500),
             },
-            format!("{} * * * *", next_min),
+            format!("{} * * * * *", next_min),
         )
         .await
         .expect("Enqueue job");
 
     assert_invocations_with_delay(
         1,
-        Some(Duration::from_secs(5)),
-        "delay",
+        Some(Duration::from_secs((sec_left - 1).into())),
+        "schedule",
         invocations.clone(),
     )
     .await;
+}
+
+#[tokio::test]
+async fn integration_recurring_validates_cron() {
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let job_server = create_server(invocations.clone()).await;
+
+    let result = job_server
+        .enqueue_recurring(
+            "recurring-job-2".to_string(),
+            TestCommand {
+                name: "schedule".to_string(),
+                outcome: Outcome::Delay(500),
+            },
+            "invalid_cron".to_string(),
+        )
+        .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "error parsing cron expression"
+    );
 }

@@ -1,9 +1,9 @@
 use crate::{
     encoder::{self},
     id::{Id, IdOf},
-    models::{DelayedStage, Job, RequeuedStage, Stage, StageName},
+    models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
     storage::{Storage, StorageIter},
-    JobId, UtcDateTime,
+    JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -37,6 +37,11 @@ impl Persist {
         self.get_of_type::<Job>(id).await
     }
 
+    pub async fn get_recurring_job(&self, id: RecurringJobId) -> Option<RecurringJob> {
+        let id = IdOf::SavedRecurringJob(id).get_id(&self.key_prefix);
+        self.get_of_type::<RecurringJob>(id).await
+    }
+
     pub async fn expire(&self, job_id: JobId) -> anyhow::Result<()> {
         let id = IdOf::SavedJob(job_id).get_id(&self.key_prefix);
         Ok(self.inner.del(&id.to_string()).await?)
@@ -56,8 +61,13 @@ impl Persist {
             .and_then(|bytes| encoder::decode::<T>(&bytes).ok())
     }
 
-    pub async fn save_jobs(&self, id: JobId, job: &Job) -> anyhow::Result<()> {
-        let id = IdOf::SavedJob(id).get_id(&self.key_prefix);
+    pub async fn save_job(&self, job: &Job) -> anyhow::Result<()> {
+        let id = IdOf::SavedJob(job.id.clone()).get_id(&self.key_prefix);
+        self.save(id, job).await
+    }
+
+    pub async fn save_recurring_job(&self, job: &RecurringJob) -> anyhow::Result<()> {
+        let id = IdOf::SavedRecurringJob(job.id.clone()).get_id(&self.key_prefix);
         self.save(id, job).await
     }
 

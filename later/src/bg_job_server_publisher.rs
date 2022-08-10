@@ -1,10 +1,10 @@
 use crate::core::JobParameter;
-use crate::models::{AmqpCommand, Job};
+use crate::models::{AmqpCommand, Job, RecurringJob};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::mq::MqClient;
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, generate_id};
+use crate::{encoder, generate_id, RecurringJobId};
 use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
 use std::str::FromStr;
@@ -70,19 +70,6 @@ impl BackgroundJobServerPublisher {
         self.enqueue_internal(message, None, Some(time), None).await
     }
 
-    pub async fn enqueue_recurring(
-        &self,
-        message: impl JobParameter,
-        cron: String,
-    ) -> anyhow::Result<JobId> {
-        let cron_schedule =
-            cron::Schedule::from_str(&cron).context("error parsing cron expression")?;
-        // self.enqueue_internal(message, None, None, Some(cron_schedule))
-        //     .await
-
-        Ok(JobId(generate_id()))
-    }
-
     pub async fn enqueue(&self, message: impl JobParameter) -> anyhow::Result<JobId> {
         self.enqueue_internal(message, None, None, None).await
     }
@@ -92,43 +79,47 @@ impl BackgroundJobServerPublisher {
         message: impl JobParameter,
         parent_job_id: Option<JobId>,
         delay_until: Option<UtcDateTime>,
-        _cron_schedule: Option<cron::Schedule>,
+        recurring_job_id: Option<RecurringJobId>,
     ) -> anyhow::Result<JobId> {
-        let id = crate::generate_id();
+        let job = create_job(message, parent_job_id, delay_until, recurring_job_id)?;
 
-        let job = Job {
-            id: JobId(id.clone()),
+        Ok(self.enqueue_internal_job(job).await?)
+    }
+
+    pub(crate) async fn enqueue_internal_job(&self, job: Job) -> Result<JobId, anyhow::Error> {
+        let id = job.id.clone();
+
+        self.save(&job).await?;
+        self.handle_job_enqueue_initial(job).await?;
+        Ok(id)
+    }
+
+    pub async fn enqueue_recurring(
+        &self,
+        identifier: String,
+        message: impl JobParameter,
+        cron: String,
+    ) -> anyhow::Result<JobId> {
+        // validate
+        let _ = cron::Schedule::from_str(&cron).context("error parsing cron expression")?;
+
+        let recurring_job = RecurringJob {
+            id: RecurringJobId(identifier),
             payload_type: message.get_ptype(),
             payload: message
                 .to_bytes()
                 .context("Unable to serialize the message to bytes")?,
-            stage: {
-                if let Some(parent_job_id) = parent_job_id {
-                    Stage::Waiting(WaitingStage {
-                        date: chrono::Utc::now(),
-                        parent_id: parent_job_id,
-                    })
-                } else if let Some(delay_until) = delay_until {
-                    Stage::Delayed(DelayedStage {
-                        date: chrono::Utc::now(),
-                        not_before: delay_until,
-                    })
-                } else {
-                    Stage::Enqueued(EnqueuedStage {
-                        date: chrono::Utc::now(),
-                    })
-                }
-            },
-            previous_stages: Vec::default(),
+            cron_schedule: cron,
+            date_added: chrono::Utc::now(),
             config: JobConfig::default(),
         };
 
-        // save the job
-        self.save(&job).await?;
+        self.storage.save_recurring_job(&recurring_job).await?;
 
-        self.handle_job_enqueue_initial(job).await?;
+        let first_job = recurring_job.try_into()?;
+        let id = self.enqueue_internal_job(first_job).await?;
 
-        Ok(JobId(id))
+        Ok(id)
     }
 
     pub(crate) async fn save(&self, job: &Job) -> anyhow::Result<()> {
@@ -140,7 +131,7 @@ impl BackgroundJobServerPublisher {
                 .save_continuation(&job.id, w.parent_id.clone())
                 .await?;
         }
-        self.storage.save_jobs(job.id.clone(), job).await
+        self.storage.save_job(job).await
     }
 
     pub(crate) async fn expire(&self, job: &Job, _duration: Duration) -> anyhow::Result<()> {
@@ -211,4 +202,41 @@ impl BackgroundJobServerPublisher {
 
         Ok(())
     }
+}
+
+fn create_job(
+    message: impl JobParameter,
+    parent_job_id: Option<JobId>,
+    delay_until: Option<chrono::DateTime<chrono::Utc>>,
+    recurring_job_id: Option<RecurringJobId>,
+) -> anyhow::Result<Job> {
+    let id = crate::generate_id();
+    let job = Job {
+        id: JobId(id.clone()),
+        payload_type: message.get_ptype(),
+        payload: message
+            .to_bytes()
+            .context("Unable to serialize the message to bytes")?,
+        stage: {
+            if let Some(parent_job_id) = parent_job_id {
+                Stage::Waiting(WaitingStage {
+                    date: chrono::Utc::now(),
+                    parent_id: parent_job_id,
+                })
+            } else if let Some(delay_until) = delay_until {
+                Stage::Delayed(DelayedStage {
+                    date: chrono::Utc::now(),
+                    not_before: delay_until,
+                })
+            } else {
+                Stage::Enqueued(EnqueuedStage {
+                    date: chrono::Utc::now(),
+                })
+            }
+        },
+        previous_stages: Vec::default(),
+        config: JobConfig::default(),
+        recurring_job_id: recurring_job_id,
+    };
+    Ok(job)
 }

@@ -120,7 +120,7 @@ pub async fn assert_invocations_with_delay(
     let start = SystemTime::now();
     let test_timeout = expected_delay
         .unwrap_or_else(|| Duration::from_secs(10))
-        .add(Duration::from_secs(1));
+        .add(Duration::from_secs(3));
 
     while SystemTime::now().duration_since(start).unwrap() < test_timeout
         && count_of_invocation_for(ty, &inv.lock().await) != expected_num
@@ -141,7 +141,7 @@ pub async fn assert_invocations_with_delay(
 
         assert!(
             delay.as_millis() > expected_delay.as_millis(),
-            "Expected delay of {}ms but actually {}ms",
+            "Expected delay of at least {}ms, but was actually {}ms",
             expected_delay.as_millis(),
             delay.as_millis()
         );
