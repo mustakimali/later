@@ -17,7 +17,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    println!("Amqp Command: {:?}", command);
+    tracing::debug!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
 
     Ok(match command {
@@ -49,6 +49,22 @@ where
             tracing::debug!("[Worker#{}] amqp_command: Job [Id: {}]", worker_id, job.id);
 
             if let Some(job) = handler.get_publisher().storage.get_job(job.id).await {
+                // for recurring job - schedule next job first
+                if let Some(rec_job_id) = &job.recurring_job_id {
+                    if let Some(rec_job) = handler
+                        .get_publisher()
+                        .storage
+                        .get_recurring_job(rec_job_id.clone())
+                        .await
+                    {
+                        let delayed_job = rec_job.try_into()?;
+                        handler
+                            .get_publisher()
+                            .enqueue_internal_job(delayed_job)
+                            .await?;
+                    }
+                }
+
                 handle_job(job, handler.clone()).await?;
             }
         }

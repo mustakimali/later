@@ -1,6 +1,8 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
-use crate::{JobId, UtcDateTime};
+use anyhow::Context;
+
+use crate::{JobId, RecurringJobId, UtcDateTime};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "snake_case", tag = "ty")]
@@ -60,6 +62,48 @@ pub(crate) struct Job {
     pub config: JobConfig,
     pub stage: Stage,
     pub previous_stages: Vec<Stage>,
+    pub recurring_job_id: Option<RecurringJobId>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub(crate) struct RecurringJob {
+    pub id: RecurringJobId,
+
+    pub payload_type: String,
+    pub payload: Vec<u8>,
+
+    pub cron_schedule: String,
+    pub date_added: UtcDateTime,
+    pub config: JobConfig,
+}
+
+impl TryFrom<RecurringJob> for Job {
+    type Error = anyhow::Error;
+
+    fn try_from(value: RecurringJob) -> Result<Self, Self::Error> {
+        let cron_schedule = cron::Schedule::from_str(&value.cron_schedule)
+            .context("error parsing cron expression")?;
+        let delay_until = cron_schedule
+            .upcoming(chrono::Utc)
+            .next()
+            .ok_or(anyhow::anyhow!(
+                "unable to determine next schedule from this cron expression"
+            ))?;
+
+        Ok(Self {
+            id: JobId(format!("{}R", super::generate_id())),
+            payload_type: value.payload_type,
+            payload: value.payload,
+            config: value.config,
+            stage: Stage::Delayed(DelayedStage {
+                date: chrono::Utc::now(),
+                not_before: delay_until,
+            }),
+            previous_stages: Vec::default(),
+            recurring_job_id: Some(value.id),
+        })
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

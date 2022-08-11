@@ -1,14 +1,26 @@
 use async_std::sync::{Arc, Mutex, MutexGuard};
-use later::BackgroundJobServer;
+use later::{BackgroundJobServer, UtcDateTime};
 use serde::{Deserialize, Serialize};
 use std::{
     ops::Add,
     time::{Duration, SystemTime},
 };
 
-#[derive(Clone)]
+pub struct Invocation {
+    date: UtcDateTime,
+    command: TestCommand,
+}
+
+impl Invocation {
+    pub fn new(cmd: TestCommand) -> Self {
+        Self {
+            date: chrono::Utc::now(),
+            command: cmd,
+        }
+    }
+}
 pub struct AppContext {
-    invc: Arc<Mutex<Vec<TestCommand>>>,
+    invc: Arc<Mutex<Vec<Invocation>>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,7 +43,7 @@ later::background_job! {
 }
 
 pub async fn create_server(
-    invc: Arc<Mutex<Vec<TestCommand>>>,
+    invc: Arc<Mutex<Vec<Invocation>>>,
 ) -> BackgroundJobServer<AppContext, JobServer<AppContext>> {
     let job_ctx = AppContext { invc: invc };
     let storage = later::storage::redis::Redis::new("redis://127.0.0.1")
@@ -67,13 +79,13 @@ async fn handle_internal(
 ) -> anyhow::Result<()> {
     let retry_count = {
         let mut invc = ctx.app.invc.lock().await;
-        invc.push(payload.clone());
+        invc.push(Invocation::new(payload.clone()));
 
         println!("[TEST] Command received {}", payload.name.clone());
 
         invc.iter()
-            .filter(|cmd| {
-                if let Outcome::Retry(_) = cmd.outcome {
+            .filter(|inv| {
+                if let Outcome::Retry(_) = inv.command.outcome {
                     true
                 } else {
                     false
@@ -95,7 +107,7 @@ async fn handle_internal(
     }
 }
 
-pub async fn assert_invocations(expected_num: usize, ty: &str, inv: Arc<Mutex<Vec<TestCommand>>>) {
+pub async fn assert_invocations(expected_num: usize, ty: &str, inv: Arc<Mutex<Vec<Invocation>>>) {
     assert_invocations_with_delay(expected_num, None, ty, inv).await;
 }
 
@@ -103,12 +115,12 @@ pub async fn assert_invocations_with_delay(
     expected_num: usize,
     expected_delay: Option<Duration>,
     ty: &str,
-    inv: Arc<Mutex<Vec<TestCommand>>>,
+    inv: Arc<Mutex<Vec<Invocation>>>,
 ) {
     let start = SystemTime::now();
     let test_timeout = expected_delay
         .unwrap_or_else(|| Duration::from_secs(10))
-        .add(Duration::from_secs(1));
+        .add(Duration::from_secs(5));
 
     while SystemTime::now().duration_since(start).unwrap() < test_timeout
         && count_of_invocation_for(ty, &inv.lock().await) != expected_num
@@ -129,7 +141,7 @@ pub async fn assert_invocations_with_delay(
 
         assert!(
             delay.as_millis() > expected_delay.as_millis(),
-            "Expected delay of {}ms but actually {}ms",
+            "Expected delay of at least {}ms, but was actually {}ms",
             expected_delay.as_millis(),
             delay.as_millis()
         );
@@ -138,8 +150,8 @@ pub async fn assert_invocations_with_delay(
     println!("Invocations: {} x {} ... Check", ty, invocations);
 }
 
-fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<TestCommand>>) -> usize {
-    inv.iter().filter(|c| c.name == ty).count()
+fn count_of_invocation_for(ty: &str, inv: &MutexGuard<Vec<Invocation>>) -> usize {
+    inv.iter().filter(|c| c.command.name == ty).count()
 }
 
 async fn sleep_ms(ms: usize) {

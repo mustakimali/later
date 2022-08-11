@@ -1,6 +1,7 @@
 #![cfg(feature = "redis")]
 
 use async_std::sync::{Arc, Mutex};
+use chrono::Timelike;
 use common::*;
 use std::time::Duration;
 
@@ -140,4 +141,61 @@ async fn integration_continuation_multiple() {
     assert_invocations(3, "continuation-multiple-2", invocations.clone()).await;
     assert_invocations(1, "continuation-multiple-3", invocations.clone()).await;
     assert_invocations(1, "continuation-multiple-1", invocations.clone()).await;
+}
+
+#[tokio::test]
+async fn integration_recurring() {
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let job_server = create_server(invocations.clone()).await;
+    let now = chrono::Utc::now();
+    let next_min = now.minute() + 1;
+    let next_min_str = format!("{}:{}", now.hour(), next_min);
+    let sec_left = 60 - now.second();
+    println!(
+        "This recurring job should execute in {} ({} sec later)",
+        next_min_str, sec_left
+    );
+
+    job_server
+        .enqueue_recurring(
+            "recurring-job-1".to_string(),
+            TestCommand {
+                name: "schedule".to_string(),
+                outcome: Outcome::Delay(500),
+            },
+            format!("{} * * * * *", next_min),
+        )
+        .await
+        .expect("Enqueue job");
+
+    assert_invocations_with_delay(
+        1,
+        Some(Duration::from_secs((sec_left - 1).into())),
+        "schedule",
+        invocations.clone(),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn integration_recurring_validates_cron() {
+    let invocations = Arc::new(Mutex::new(Vec::default()));
+    let job_server = create_server(invocations.clone()).await;
+
+    let result = job_server
+        .enqueue_recurring(
+            "recurring-job-2".to_string(),
+            TestCommand {
+                name: "schedule".to_string(),
+                outcome: Outcome::Delay(500),
+            },
+            "invalid_cron".to_string(),
+        )
+        .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "error parsing cron expression"
+    );
 }
