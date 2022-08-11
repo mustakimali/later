@@ -120,7 +120,7 @@ impl MqClient for RabbitMq {
                 lapin::ExchangeKind::Direct,
                 ExchangeDeclareOptions {
                     durable: true,
-                    auto_delete: true,
+                    auto_delete: false,
                     ..Default::default()
                 },
                 FieldTable::default(),
@@ -168,7 +168,7 @@ async fn declare_get_queue(channel: &Channel, routing_key: &str) -> anyhow::Resu
             routing_key,
             QueueDeclareOptions {
                 durable: true,
-                auto_delete: true,
+                auto_delete: false,
                 ..Default::default()
             },
             FieldTable::default(),

@@ -141,9 +141,10 @@ impl BackgroundJobServerPublisher {
 
     #[async_recursion::async_recursion]
     pub(crate) async fn handle_job_enqueue_initial(&self, job: Job) -> anyhow::Result<()> {
-        println!(
+        tracing::debug!(
             "handle_job_enqueue_initial: Id: {}, Stage: {:?}",
-            &job.id, &job.stage
+            &job.id,
+            &job.stage
         );
 
         match &job.stage {
@@ -168,7 +169,7 @@ impl BackgroundJobServerPublisher {
                         return Ok(());
                     }
 
-                    println!(
+                    tracing::info!(
                         "Parent job {} is already completed, enqueuing this job immediately",
                         parent_job.id
                     );
@@ -181,13 +182,13 @@ impl BackgroundJobServerPublisher {
                 self.handle_job_enqueue_initial(job).await?;
             }
             Stage::Enqueued(_) => {
-                println!("Enqueue job {}", job.id);
+                tracing::debug!("Enqueue job {}", job.id);
 
                 self.publish_amqp_command(AmqpCommand::ExecuteJob(job.into()))
                     .await?
             }
             Stage::Running(_) | Stage::Requeued(_) | Stage::Success(_) | Stage::Failed(_) => {
-                println!("Invalid job here {}, Stage {:?}", job.id, &job.stage);
+                tracing::warn!("Invalid job here {}, Stage {:?}", job.id, &job.stage);
                 //unreachable!("stage is handled in consumer")
             }
         }
