@@ -210,7 +210,7 @@ pub(crate) struct RequeuedStage {
 impl Job {
     pub fn transition(self) -> Job {
         let next_stage = self.stage.clone().transition();
-        println!(
+        tracing::debug!(
             "Transition job {}: {} -> {}",
             self.id,
             self.stage.get_name(),
