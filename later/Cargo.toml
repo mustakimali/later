@@ -18,7 +18,7 @@ redis = ["dep:redis"]
 later-derive = { path = "../later-derive", version = "0.0.5"}
 
 # external
-anyhow = "1.0.58"
+anyhow = "1.0.60"
 rusty_ulid = "1.0.0"
 lapin = "2.1.1"
 tokio = { version = "1.20.1", features = ["full"]}
@@ -27,7 +27,7 @@ serde_derive = "1.0"
 rmp-serde = "1.1"
 chrono = { version = "0.4", features = ["serde"]}
 tracing = "0.1"
-async-trait = "0.1.56"
+async-trait = "0.1.57"
 futures = "0.3.21"
 futures-core = "0.3.21"
 async-recursion = "1.0"

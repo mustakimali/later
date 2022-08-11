@@ -13,5 +13,5 @@ later = { path = "../later/", features = ["redis"] }
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }
 tokio = "1.20.1"
-anyhow = "1.0.58"
+anyhow = "1.0.60"
 serde = "1.0"
