@@ -3,14 +3,11 @@
 //! A distributed background job manager and runner for Rust. This is currently in PoC stage.
 //!
 //! ## Set up
-//!
-//! <details>
-//!   <summary>Click to expand: One-time setup during application startup!</summary>
-//!
+
 //! ### 1. Import `later` and required dependencies
 //!
 //! ```toml
-//! later = { version = "0.0.6", features = ["redis"] }
+//! later = { version = "0.0.7", features = ["redis", "postgres"] }
 //! serde = "1.0"
 //! ```
 //!
@@ -109,9 +106,9 @@
 //!     Ok(()) // or Err(_) to retry this message
 //! }
 //! ```
-//!
-//! </details>
-//!
+//! 
+//! This example use `Redis` storage. More storage is available in the [`storage`] module.
+//! 
 //! ---
 //!
 //! ## Fire and forget jobs
@@ -203,7 +200,33 @@
 //!
 //! ## Recurring jobs
 //!
-//! _(Coming soon)_
+//! Run recurring job based on cron schedule.
+//! 
+//! ```no_run
+//! # #[derive(serde::Serialize, serde::Deserialize)]
+//! # pub struct SendNewsletter { pub address: String }
+//! # later::background_job! {
+//! #     struct Jobs {
+//! #         send_newsletter: SendNewsletter,
+//! #     }
+//! # }
+//! # #[tokio::main]
+//! # async fn main() -> anyhow::Result<()>{
+//! # let ctx : later::BackgroundJobServerPublisher = todo!();
+//! ctx.enqueue_recurring("send-newsletter-1".to_string(),
+//!     SendNewsletter{
+//!         address: "hello@rust-lang.org".to_string(),
+//!     },
+//!     "0 6 1 * * *" // 6am, 1st day of every month
+//! ).await?;
+//! # Ok(())
+//! # }
+//! ```
+//! 
+//! ## Storage
+//! 
+//! * `redis`: `later::storage::Redis::new("redis://127.0.0.1/").await`
+//! * `postgres`: `later::storage::Postgres::new("postgres://test:test@localhost/later_test").await` (Requires feature `postgres`)
 use crate::core::BgJobHandler;
 
 use mq::{MqClient, MqPublisher};

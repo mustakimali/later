@@ -5,6 +5,9 @@ pub mod postgres;
 pub mod redis;
 pub(crate) mod storage_iter;
 
+#[cfg(test)]
+mod storage_tests;
+
 pub use storage_iter::StorageIter;
 pub use storage_iter::StorageIterator;
 

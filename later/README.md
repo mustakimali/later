@@ -27,17 +27,20 @@ Just like fire and forget jobs that starts after a certain interval.
 
 ### Recurring jobs
 
-_(Coming soon)_
+(_wip_)
+
+Run recurring jobs based on cron schedule. 
+* To fix: to delete recurring job.
 
 
 ## Project status
 
 This is PoC at this moment. Upcoming features are
 
-- [ ] Multiple storage backend (redis, postgres)
+- [x] Multiple storage backend (redis, postgres)
 - [x] Continuation
 - [x] Delayed Jobs
-- [ ] Recurring jobs
+- [x] Recurring jobs
 - [ ] Dashboard
 - [ ] Use storage backend for scheduling (to remove dependency to RabbitMQ)
 - [x] Ergonomic API
