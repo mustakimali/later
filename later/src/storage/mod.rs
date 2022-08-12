@@ -3,7 +3,14 @@ pub mod memory;
 pub mod postgres;
 #[cfg(feature = "redis")]
 pub mod redis;
+
 pub(crate) mod storage_iter;
+
+#[cfg(feature = "postgres")]
+pub use crate::storage::postgres::Postgres;
+
+#[cfg(feature = "redis")]
+pub use crate::storage::redis::Redis;
 
 #[cfg(test)]
 mod storage_tests;

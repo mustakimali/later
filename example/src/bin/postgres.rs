@@ -2,7 +2,7 @@
 extern crate rocket;
 
 use bg::*;
-use later::{mq::amqp, storage::redis::Redis, BackgroundJobServer, Config};
+use later::{mq::amqp, BackgroundJobServer, Config};
 use rocket::State;
 
 mod bg {
@@ -95,9 +95,9 @@ async fn metrics(state: &State<AppContext>) -> String {
 #[launch]
 async fn rocket() -> _ {
     let job_ctx = JobContext {};
-    let storage = Redis::new("redis://127.0.0.1/")
-        .await
-        .expect("connect to redis");
+    let storage = later::storage::Postgres::new("postgres://test:test@localhost/later_test")
+    .await
+    .expect("connect to postgres");
     let mq = amqp::RabbitMq::new("amqp://guest:guest@localhost:5672".into());
     let bjs = DeriveHandlerBuilder::new(
         Config::builder()
