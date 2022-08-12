@@ -2,13 +2,13 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    storage::{Storage, StorageIterator, ScanRange, StorageIter},
+    storage::{ScanRange, Storage, StorageIter, StorageIterator},
     JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
 pub(crate) struct Persist {
-    inner: Box<dyn Storage>,
+    pub(crate) inner: Box<dyn Storage>,
     key_prefix: String,
 }
 
@@ -101,7 +101,7 @@ impl Persist {
 
         let mut items = Vec::default();
         let mut iter = self.inner.scan_range(&id.to_string()).await;
-        while let Some(id_bytes) = iter.next().await {
+        while let Some(id_bytes) = iter.next(&self.inner).await {
             if let Ok(job_id) = encoder::decode::<JobId>(&id_bytes) {
                 if let Some(job) = self.get_job(job_id).await {
                     items.push(job);

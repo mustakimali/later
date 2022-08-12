@@ -79,7 +79,7 @@ async fn handle_poll_delayed_job_command<C, H: BgJobHandler<C>>(
     let publisher = handler.get_publisher();
     let mut iter = publisher.storage.get_delayed_jobs().await?;
 
-    while let Some(bytes) = iter.next().await {
+    while let Some(bytes) = iter.next(&publisher.storage.inner).await {
         let job_id = encoder::decode::<JobId>(&bytes)?;
 
         if let Some(job) = publisher.storage.get_job(job_id.clone()).await {
@@ -118,7 +118,7 @@ async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
 
     let publisher = handler.get_publisher();
     let mut iter = publisher.storage.get_reqd_jobs().await?;
-    while let Some(job_id_bytes) = iter.next().await {
+    while let Some(job_id_bytes) = iter.next(&publisher.storage.inner).await {
         let job_id = encoder::decode::<JobId>(&job_id_bytes)?;
 
         if let Some(job) = publisher.storage.get_job(job_id).await {

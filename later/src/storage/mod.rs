@@ -34,8 +34,8 @@ pub trait StorageIter: Sync + Send {
     fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
 
-    async fn next(&mut self) -> Option<Vec<u8>>;
-    async fn count(&mut self) -> usize;
+    async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>>;
+    async fn count(&mut self, storage: &Box<dyn Storage>) -> usize;
 }
 
 pub(crate) struct ScanRange {
@@ -52,16 +52,16 @@ where
     T: Storage,
 {
     async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        todo!()
+        self.get(key).await
     }
     async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        todo!()
+        self.set(key, value).await
     }
     async fn del(&self, key: &str) -> anyhow::Result<()> {
-        todo!()
+        self.del(key).await
     }
     async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()> {
-        todo!()
+        self.expire(key, ttl_sec).await
     }
 }
 
@@ -178,26 +178,25 @@ impl StorageIter for ScanRange {
         self.key.clone()
     }
 
-    async fn next(&mut self) -> Option<Vec<u8>> {
-        // if self.count == 0 || self.index == self.count {
-        //     return None;
-        // }
+    async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
+        if self.count == 0 || self.index == self.count {
+            return None;
+        }
 
-        // let key = get_scan_item_key(&self.key, self.index);
+        let key = get_scan_item_key(&self.key, self.index);
 
-        // let item = self.parent.get(&key).await;
+        let item = storage.get(&key).await;
 
-        // if item.is_some() {
-        //     self.index += 1;
-        // }
+        if item.is_some() {
+            self.index += 1;
+        }
 
-        // item
-        todo!()
+        item
     }
 
-    async fn count(&mut self) -> usize {
+    async fn count(&mut self, storage: &Box<dyn Storage>) -> usize {
         let mut count = 0;
-        while self.next().await.is_some() {
+        while self.next(storage).await.is_some() {
             count += 1;
         }
 
