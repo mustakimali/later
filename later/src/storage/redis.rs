@@ -61,10 +61,12 @@ mod test_redis {
 
     use super::*;
 
-    async fn create_client() -> Redis {
-        Redis::new("redis://127.0.0.1/")
+    async fn create_client() -> Box<dyn Storage> {
+        let redis = Redis::new("redis://127.0.0.1/")
             .await
-            .expect("connect to redis")
+            .expect("connect to redis");
+
+        Box::new(redis)
     }
 
     #[tokio::test]
@@ -92,7 +94,7 @@ mod test_redis {
         }
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(10, count);
     }
@@ -114,13 +116,13 @@ mod test_redis {
             .unwrap();
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(2, count);
 
         let mut read_items = Vec::default();
         let mut scan_result = storage.scan_range(&key).await;
-        while let Some(item) = scan_result.next().await {
+        while let Some(item) = scan_result.next(&storage).await {
             read_items.push(String::from_utf8(item).unwrap());
         }
 
@@ -141,13 +143,13 @@ mod test_redis {
             .unwrap();
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(1, count);
 
         let mut read_items = Vec::default();
         let mut scan_result = storage.scan_range(&key).await;
-        while let Some(item) = scan_result.next().await {
+        while let Some(item) = scan_result.next(&storage).await {
             read_items.push(String::from_utf8(item).unwrap());
         }
 
@@ -168,31 +170,31 @@ mod test_redis {
                 .unwrap();
         }
 
-        assert_eq!(100, storage.scan_range(&key).await.count().await);
+        assert_eq!(100, storage.scan_range(&key).await.count(&storage).await);
 
         // scan first 50
         let mut range = storage.scan_range(&key).await;
         let mut counter = 0;
         while counter < 50 {
-            let next_item = range.next().await;
+            let next_item = range.next(&storage).await;
             assert!(next_item.is_some());
 
             counter += 1;
         }
 
         // trim
-        let _ = storage.trim(&range).await;
+        let _ = storage.trim(range).await;
 
         // should have only 50
         let mut range = storage.scan_range(&key).await;
-        assert_eq!(50, range.count().await);
+        assert_eq!(50, range.count(&storage).await);
 
         // should be empty
         let mut range = storage.scan_range(&key).await;
-        while range.next().await.is_some() {}
-        let _ = storage.trim(&range).await;
+        while range.next(&storage).await.is_some() {}
+        let _ = storage.trim(range).await;
 
-        assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
+        assert_eq!(0, storage.scan_range(&key).await.count(&storage).await); // should be empty
     }
 
     #[tokio::test]
@@ -213,34 +215,34 @@ mod test_redis {
         storage.push(&key, "item-10".as_bytes()).await.unwrap();
 
         let mut range = storage.scan_range(&key).await;
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
 
-        storage.trim(&range).await.unwrap();
+        storage.trim(range).await.unwrap();
 
         let mut range = storage.scan_range(&key).await;
         assert_eq!(
             "item-6",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-7",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-8",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-9",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-10",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
     }
 }

@@ -4,7 +4,7 @@ use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage}
 use crate::mq::MqClient;
 use crate::persist::Persist;
 use crate::storage::Storage;
-use crate::{encoder, generate_id, RecurringJobId};
+use crate::{encoder, RecurringJobId};
 use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
 use anyhow::Context;
 use std::str::FromStr;

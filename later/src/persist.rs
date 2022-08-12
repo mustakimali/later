@@ -2,7 +2,7 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    storage::{ScanRange, Storage, StorageIter, StorageIterator},
+    storage::{Storage, StorageIter, StorageIterator},
     JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
