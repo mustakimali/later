@@ -2,7 +2,7 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    storage::{Storage, StorageIter, StorageIterator},
+    storage::{Storage, StorageIterator, ScanRange, StorageIter},
     JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -48,7 +48,7 @@ impl Persist {
     }
 
     pub async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
-        Ok(self.inner.trim(&range).await?)
+        Ok(self.inner.trim(range).await?)
     }
 
     pub async fn get_of_type<T>(&self, id: Id) -> Option<T>

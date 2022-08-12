@@ -23,7 +23,7 @@ pub trait StorageIterator {
     async fn get_of_type<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
     // hashset
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
-    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()>;
+    async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
     async fn del_range(&self, key: &str) -> anyhow::Result<()>;
 }
@@ -38,16 +38,35 @@ pub trait StorageIter: Sync + Send {
     async fn count(&mut self) -> usize;
 }
 
-struct ScanRange<T: Storage> {
+pub(crate) struct ScanRange {
     key: String,
     count: usize,
     start: usize,
     index: usize,
-    parent: T,
+    //parent: &'s Box<dyn Storage>,
 }
 
 #[async_trait::async_trait]
-impl<T: Storage + Clone> StorageIterator for T {
+impl<T> Storage for &T
+where
+    T: Storage,
+{
+    async fn get(&self, key: &str) -> Option<Vec<u8>> {
+        todo!()
+    }
+    async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+        todo!()
+    }
+    async fn del(&self, key: &str) -> anyhow::Result<()> {
+        todo!()
+    }
+    async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+#[async_trait::async_trait]
+impl<T: Storage + ?Sized> StorageIterator for T {
     async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
         if let Some(bytes) = self.get(key).await {
             return encoder::decode::<V>(&bytes).ok();
@@ -75,7 +94,7 @@ impl<T: Storage + Clone> StorageIterator for T {
             Err(e) => Err(e),
         }
     }
-    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
+    async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
         let key = range.get_key();
         let start_key = format!("{}-start", key);
         let idx = range.get_index();
@@ -112,7 +131,7 @@ impl<T: Storage + Clone> StorageIterator for T {
             count: item_in_range,
             start: start_from_idx,
             index: start_from_idx,
-            parent: self.clone(),
+            //parent: &self,
         };
 
         Box::new(scan)
@@ -146,7 +165,7 @@ impl<T: Storage + Clone> StorageIterator for T {
 }
 
 #[async_trait::async_trait]
-impl<T: Storage> StorageIter for ScanRange<T> {
+impl StorageIter for ScanRange {
     fn get_index(&self) -> usize {
         self.index
     }
@@ -160,19 +179,20 @@ impl<T: Storage> StorageIter for ScanRange<T> {
     }
 
     async fn next(&mut self) -> Option<Vec<u8>> {
-        if self.count == 0 || self.index == self.count {
-            return None;
-        }
+        // if self.count == 0 || self.index == self.count {
+        //     return None;
+        // }
 
-        let key = get_scan_item_key(&self.key, self.index);
+        // let key = get_scan_item_key(&self.key, self.index);
 
-        let item = self.parent.get(&key).await;
+        // let item = self.parent.get(&key).await;
 
-        if item.is_some() {
-            self.index += 1;
-        }
+        // if item.is_some() {
+        //     self.index += 1;
+        // }
 
-        item
+        // item
+        todo!()
     }
 
     async fn count(&mut self) -> usize {
