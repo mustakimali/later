@@ -2,13 +2,13 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    storage::{Storage, StorageIter, StorageIterator},
+    storage::{Storage, StorageIter, StorageWrapper},
     JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
 pub(crate) struct Persist {
-    inner: Box<dyn Storage>,
+    inner: StorageWrapper,
     key_prefix: String,
 }
 
@@ -20,7 +20,7 @@ pub(crate) struct Config<'s> {
 impl Persist {
     pub fn new(storage: Box<dyn Storage>, key_prefix: String) -> Self {
         Self {
-            inner: storage,
+            inner: StorageWrapper { inner: storage },
             key_prefix,
         }
     }
@@ -131,15 +131,18 @@ impl Persist {
         Ok(())
     }
 
-    pub async fn get_delayed_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
+    pub async fn get_delayed_jobs(&'_ self) -> anyhow::Result<Box<dyn StorageIter + '_>> {
         self.get_jobs_to_poll(&DelayedStage::get_name()).await
     }
 
-    pub async fn get_reqd_jobs(&self) -> anyhow::Result<Box<dyn StorageIter>> {
+    pub async fn get_reqd_jobs(&'_ self) -> anyhow::Result<Box<dyn StorageIter + '_>> {
         self.get_jobs_to_poll(&RequeuedStage::get_name()).await
     }
 
-    async fn get_jobs_to_poll(&self, name: &str) -> Result<Box<dyn StorageIter>, anyhow::Error> {
+    async fn get_jobs_to_poll(
+        &self,
+        name: &str,
+    ) -> Result<Box<dyn StorageIter + '_>, anyhow::Error> {
         let key = IdOf::JobsInStagesId(name.to_string()).get_id(&&self.key_prefix);
         let iter = self.inner.scan_range(&key.to_string()).await;
         Ok(iter)

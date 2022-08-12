@@ -1,6 +1,5 @@
-use serde::de::DeserializeOwned;
-
 use crate::encoder;
+use serde::de::DeserializeOwned;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -38,17 +37,30 @@ pub trait StorageIter: Sync + Send {
     async fn count(&mut self) -> usize;
 }
 
-struct ScanRange<T: Storage> {
+struct ScanRange<'sw> {
     key: String,
     count: usize,
     start: usize,
     index: usize,
-    parent: T,
+    parent: &'sw StorageWrapper,
 }
 
-#[async_trait::async_trait]
-impl<T: Storage + Clone> StorageIterator for T {
-    async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
+pub(crate) struct StorageWrapper {
+    pub inner: Box<dyn Storage>,
+}
+
+impl std::ops::Deref for StorageWrapper {
+    type Target = Box<dyn Storage>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+// #[async_trait::async_trait]
+// impl StorageIterator for StorageWrapper {
+impl StorageWrapper {
+    pub async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
         if let Some(bytes) = self.get(key).await {
             return encoder::decode::<V>(&bytes).ok();
         }
@@ -56,7 +68,7 @@ impl<T: Storage + Clone> StorageIterator for T {
         None
     }
 
-    async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    pub async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let count = self
             .get_of_type::<i32>(&count_key)
@@ -75,7 +87,8 @@ impl<T: Storage + Clone> StorageIterator for T {
             Err(e) => Err(e),
         }
     }
-    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
+
+    pub async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
         let key = range.get_key();
         let start_key = format!("{}-start", key);
         let idx = range.get_index();
@@ -95,30 +108,33 @@ impl<T: Storage + Clone> StorageIterator for T {
 
         Ok(())
     }
-    async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
-        let start_key = format!("{}-start", key);
-        let count_key = format!("{}-count", key);
-        let start_from_idx = self
-            .get_of_type::<usize>(&start_key)
-            .await
-            .unwrap_or_else(|| 0);
-        let item_in_range = self
-            .get_of_type::<usize>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
 
-        let scan = ScanRange {
-            key: key.to_string(),
-            count: item_in_range,
-            start: start_from_idx,
-            index: start_from_idx,
-            parent: self.clone(),
-        };
+    pub async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
+        // let start_key = format!("{}-start", key);
+        // let count_key = format!("{}-count", key);
+        // let start_from_idx = self
+        //     .get_of_type::<usize>(&start_key)
+        //     .await
+        //     .unwrap_or_else(|| 0);
+        // let item_in_range = self
+        //     .get_of_type::<usize>(&count_key)
+        //     .await
+        //     .unwrap_or_else(|| 0);
 
-        Box::new(scan)
+        // let x = self.clone();
+        // let scan = ScanRange {
+        //     key: key.to_string(),
+        //     count: item_in_range,
+        //     start: start_from_idx,
+        //     index: start_from_idx,
+        //     parent: self.clone(),
+        // };
+
+        // Box::new(scan)
+        todo!()
     }
 
-    async fn del_range(&self, key: &str) -> anyhow::Result<()> {
+    pub async fn del_range(&self, key: &str) -> anyhow::Result<()> {
         let count_key = format!("{}-count", key);
         let start_key = format!("{}-start", key);
         let start_from_idx = self
@@ -146,7 +162,7 @@ impl<T: Storage + Clone> StorageIterator for T {
 }
 
 #[async_trait::async_trait]
-impl<T: Storage> StorageIter for ScanRange<T> {
+impl<'sw> StorageIter for ScanRange<'sw> {
     fn get_index(&self) -> usize {
         self.index
     }
