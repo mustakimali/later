@@ -47,25 +47,6 @@ pub(crate) struct ScanRange {
 }
 
 #[async_trait::async_trait]
-impl<T> Storage for &T
-where
-    T: Storage,
-{
-    async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        self.get(key).await
-    }
-    async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        self.set(key, value).await
-    }
-    async fn del(&self, key: &str) -> anyhow::Result<()> {
-        self.del(key).await
-    }
-    async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()> {
-        self.expire(key, ttl_sec).await
-    }
-}
-
-#[async_trait::async_trait]
 impl<T: Storage + ?Sized> StorageIterator for T {
     async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
         if let Some(bytes) = self.get(key).await {
