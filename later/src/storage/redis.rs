@@ -1,22 +1,12 @@
 use std::sync::Arc;
 
-use super::{Storage, StorageIter};
-use crate::encoder;
+use super::Storage;
 use redis::{aio::Connection, AsyncCommands, Client};
-use serde::de::DeserializeOwned;
 
 #[derive(Clone)]
 pub struct Redis {
     _client: Client,
     connection: Arc<async_mutex::Mutex<Connection>>,
-}
-
-struct ScanRange {
-    key: String,
-    count: usize,
-    start: usize,
-    index: usize,
-    parent: Redis,
 }
 
 impl Redis {
@@ -28,18 +18,6 @@ impl Redis {
             _client: client,
             connection: Arc::new(async_mutex::Mutex::new(conn)),
         })
-    }
-
-    async fn get_of_type<T>(&self, key: &str) -> Option<T>
-    where
-        T: DeserializeOwned,
-    {
-        let mut conn = self.connection.lock().await;
-        if let Some(bytes) = conn.get::<_, Vec<u8>>(key).await.ok() {
-            return encoder::decode::<T>(&bytes).ok();
-        }
-
-        None
     }
 }
 
@@ -74,150 +52,21 @@ impl Storage for Redis {
             .await
             .map_err(anyhow::Error::from)
     }
-
-    async fn del_range(&self, key: &str) -> anyhow::Result<()> {
-        let count_key = format!("{}-count", key);
-        let start_key = format!("{}-start", key);
-        let start_from_idx = self
-            .get_of_type::<usize>(&start_key)
-            .await
-            .unwrap_or_else(|| 0);
-        let item_in_range = self
-            .get_of_type::<usize>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
-
-        for idx in start_from_idx..item_in_range {
-            let item_key = get_scan_item_key(key, idx);
-            self.del(&item_key).await?;
-        }
-
-        // delete start + count
-        self.del(&start_key).await?;
-        self.del(&count_key).await?;
-
-        // ToDo: make atomic
-
-        Ok(())
-    }
-    async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        let count_key = format!("{}-count", key);
-        let count = self
-            .get_of_type::<i32>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
-
-        let key = format!("{}-{}", key, count);
-
-        match self.set(&key, value).await {
-            Ok(_) => {
-                // store the count
-                self.set(&count_key, &encoder::encode(&count + 1)?).await?;
-
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    async fn trim(&self, range: &Box<dyn StorageIter>) -> anyhow::Result<()> {
-        let key = range.get_key();
-        let start_key = format!("{}-start", key);
-        let idx = range.get_index();
-
-        if idx == range.get_start() {
-            return Ok(());
-        }
-
-        self.set(&start_key, &encoder::encode(idx)?).await?;
-
-        let start = range.get_start();
-        let end = range.get_index();
-        for i in start..end {
-            let key = get_scan_item_key(&key, i);
-            let _ = self.del(&key).await;
-        }
-
-        Ok(())
-    }
-
-    async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
-        let start_key = format!("{}-start", key);
-        let count_key = format!("{}-count", key);
-        let start_from_idx = self
-            .get_of_type::<usize>(&start_key)
-            .await
-            .unwrap_or_else(|| 0);
-        let item_in_range = self
-            .get_of_type::<usize>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
-
-        let scan = ScanRange {
-            key: key.to_string(),
-            count: item_in_range,
-            start: start_from_idx,
-            index: start_from_idx,
-            parent: self.clone(),
-        };
-
-        Box::new(scan)
-    }
-}
-
-#[async_trait::async_trait]
-impl StorageIter for ScanRange {
-    fn get_index(&self) -> usize {
-        self.index
-    }
-
-    fn get_start(&self) -> usize {
-        self.start
-    }
-
-    fn get_key(&self) -> String {
-        self.key.clone()
-    }
-
-    async fn next(&mut self) -> Option<Vec<u8>> {
-        if self.count == 0 || self.index == self.count {
-            return None;
-        }
-
-        let key = get_scan_item_key(&self.key, self.index);
-
-        let item = self.parent.get(&key).await;
-
-        if item.is_some() {
-            self.index += 1;
-        }
-
-        item
-    }
-
-    async fn count(&mut self) -> usize {
-        let mut count = 0;
-        while self.next().await.is_some() {
-            count += 1;
-        }
-
-        count
-    }
-}
-
-fn get_scan_item_key(range_key: &str, idx: usize) -> String {
-    format!("{}-{}", range_key, idx)
 }
 
 #[cfg(test)]
 mod test_redis {
 
+    use crate::storage::StorageIterator;
+
     use super::*;
 
-    async fn create_client() -> Redis {
-        Redis::new("redis://127.0.0.1/")
+    async fn create_client() -> Box<dyn Storage> {
+        let redis = Redis::new("redis://127.0.0.1/")
             .await
-            .expect("connect to redis")
+            .expect("connect to redis");
+
+        Box::new(redis)
     }
 
     #[tokio::test]
@@ -245,7 +94,7 @@ mod test_redis {
         }
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(10, count);
     }
@@ -267,13 +116,13 @@ mod test_redis {
             .unwrap();
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(2, count);
 
         let mut read_items = Vec::default();
         let mut scan_result = storage.scan_range(&key).await;
-        while let Some(item) = scan_result.next().await {
+        while let Some(item) = scan_result.next(&storage).await {
             read_items.push(String::from_utf8(item).unwrap());
         }
 
@@ -294,13 +143,13 @@ mod test_redis {
             .unwrap();
 
         let mut scan_result = storage.scan_range(&key).await;
-        let count = scan_result.count().await;
+        let count = scan_result.count(&storage).await;
 
         assert_eq!(1, count);
 
         let mut read_items = Vec::default();
         let mut scan_result = storage.scan_range(&key).await;
-        while let Some(item) = scan_result.next().await {
+        while let Some(item) = scan_result.next(&storage).await {
             read_items.push(String::from_utf8(item).unwrap());
         }
 
@@ -321,31 +170,31 @@ mod test_redis {
                 .unwrap();
         }
 
-        assert_eq!(100, storage.scan_range(&key).await.count().await);
+        assert_eq!(100, storage.scan_range(&key).await.count(&storage).await);
 
         // scan first 50
         let mut range = storage.scan_range(&key).await;
         let mut counter = 0;
         while counter < 50 {
-            let next_item = range.next().await;
+            let next_item = range.next(&storage).await;
             assert!(next_item.is_some());
 
             counter += 1;
         }
 
         // trim
-        let _ = storage.trim(&range).await;
+        let _ = storage.trim(range).await;
 
         // should have only 50
         let mut range = storage.scan_range(&key).await;
-        assert_eq!(50, range.count().await);
+        assert_eq!(50, range.count(&storage).await);
 
         // should be empty
         let mut range = storage.scan_range(&key).await;
-        while range.next().await.is_some() {}
-        let _ = storage.trim(&range).await;
+        while range.next(&storage).await.is_some() {}
+        let _ = storage.trim(range).await;
 
-        assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
+        assert_eq!(0, storage.scan_range(&key).await.count(&storage).await); // should be empty
     }
 
     #[tokio::test]
@@ -366,34 +215,34 @@ mod test_redis {
         storage.push(&key, "item-10".as_bytes()).await.unwrap();
 
         let mut range = storage.scan_range(&key).await;
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
-        assert!(range.next().await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
+        assert!(range.next(&storage).await.is_some());
 
-        storage.trim(&range).await.unwrap();
+        storage.trim(range).await.unwrap();
 
         let mut range = storage.scan_range(&key).await;
         assert_eq!(
             "item-6",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-7",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-8",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-9",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
         assert_eq!(
             "item-10",
-            &String::from_utf8(range.next().await.unwrap()).unwrap()
+            &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
         );
     }
 }
