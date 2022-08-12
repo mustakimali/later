@@ -144,6 +144,7 @@ async fn integration_continuation_multiple() {
 }
 
 #[tokio::test]
+#[ignore = "not fully implemented"]
 async fn integration_recurring() {
     let invocations = Arc::new(Mutex::new(Vec::default()));
     let job_server = create_server(invocations.clone()).await;
@@ -158,7 +159,7 @@ async fn integration_recurring() {
 
     job_server
         .enqueue_recurring(
-            "recurring-job-1".to_string(),
+            "recurring-job-1".to_string(), // specify an Id
             TestCommand {
                 name: "schedule".to_string(),
                 outcome: Outcome::Delay(500),

@@ -100,11 +100,11 @@ mod test_postgres {
     use super::*;
 
     async fn create_client() -> Box<dyn Storage> {
-        let redis = Postgres::new("postgres://test:test@localhost/later_test")
+        let postgres = Postgres::new("postgres://test:test@localhost/later_test")
             .await
             .expect("connect to postgres");
 
-        Box::new(redis)
+        Box::new(postgres)
     }
 
     super::super::storage_tests::storage_tests! {}
