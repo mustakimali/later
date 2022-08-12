@@ -2,7 +2,7 @@ use crate::{
     core::BgJobHandler,
     encoder, metrics,
     models::{AmqpCommand, ChannelCommand, Job, RequeuedStage, Stage},
-    BackgroundJobServerPublisher, JobId,
+    JobId,
 };
 use async_std::channel::Sender;
 use std::{sync::Arc, time::Duration};
@@ -10,7 +10,7 @@ use std::{sync::Arc, time::Duration};
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
-    handler: Arc<H>,
+    handler: &Arc<H>,
     inproc_cmd_tx: &Sender<ChannelCommand>,
 ) -> Result<(), anyhow::Error>
 where
@@ -19,13 +19,12 @@ where
 {
     tracing::debug!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
-    let publisher = handler.get_publisher();
 
     Ok(match command {
         AmqpCommand::PollDelayedJobs => {
             tracing::debug!("[Worker#{}] amqp_command: PollDelayedJobs", worker_id);
 
-            //let _ = handle_poll_delayed_job_command(publisher).await;
+            let _ = handle_poll_delayed_job_command(handler.clone()).await;
             let _ = handler
                 .get_publisher()
                 .storage
@@ -37,7 +36,7 @@ where
         AmqpCommand::PollRequeuedJobs => {
             tracing::debug!("[Worker#{}] amqp_command: PollRequeuedJobs", worker_id);
 
-            //let _ = handle_poll_requeued_job_command(publisher).await;
+            let _ = handle_poll_requeued_job_command(handler.clone()).await;
             let _ = handler
                 .get_publisher()
                 .storage
@@ -72,11 +71,12 @@ where
     })
 }
 
-async fn handle_poll_delayed_job_command(
-    publisher: &'static BackgroundJobServerPublisher,
+async fn handle_poll_delayed_job_command<C, H: BgJobHandler<C>>(
+    handler: Arc<H>,
 ) -> anyhow::Result<()> {
     tracing::debug!("Polling delayed jobs");
 
+    let publisher = handler.get_publisher();
     let mut iter = publisher.storage.get_delayed_jobs().await?;
 
     while let Some(bytes) = iter.next().await {
@@ -111,11 +111,12 @@ async fn handle_poll_delayed_job_command(
     Ok(())
 }
 
-async fn handle_poll_requeued_job_command(
-    publisher: &'static BackgroundJobServerPublisher,
+async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
+    handler: Arc<H>,
 ) -> anyhow::Result<()> {
     tracing::debug!("Polling reqd jobs");
 
+    let publisher = handler.get_publisher();
     let mut iter = publisher.storage.get_reqd_jobs().await?;
     while let Some(job_id_bytes) = iter.next().await {
         let job_id = encoder::decode::<JobId>(&job_id_bytes)?;
