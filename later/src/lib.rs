@@ -106,9 +106,9 @@
 //!     Ok(()) // or Err(_) to retry this message
 //! }
 //! ```
-//! 
+//!
 //! This example use `Redis` storage. More storage is available in the [`storage`] module.
-//! 
+//!
 //! ---
 //!
 //! ## Fire and forget jobs
@@ -201,7 +201,7 @@
 //! ## Recurring jobs
 //!
 //! Run recurring job based on cron schedule.
-//! 
+//!
 //! ```no_run
 //! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct SendNewsletter { pub address: String }
@@ -222,9 +222,9 @@
 //! # Ok(())
 //! # }
 //! ```
-//! 
+//!
 //! ## Storage
-//! 
+//!
 //! * `redis`: `later::storage::Redis::new("redis://127.0.0.1/").await`
 //! * `postgres`: `later::storage::Postgres::new("postgres://test:test@localhost/later_test").await` (Requires feature `postgres`)
 use crate::core::BgJobHandler;

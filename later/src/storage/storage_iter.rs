@@ -17,6 +17,9 @@ pub trait StorageIter: Sync + Send {
     fn get_key(&self) -> String;
     fn get_start(&self) -> usize;
     fn get_index(&self) -> usize;
+    fn get_count(&self) -> usize;
+
+    fn is_scanning_reverse(&self) -> bool;
 
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>>;
     async fn del(&mut self, storage: &Box<dyn Storage>);
@@ -28,7 +31,8 @@ pub(crate) struct ScanRange {
     count: usize,
     start: usize,
     index: usize,
-    //parent: &'s Box<dyn Storage>,
+    scan_forward: bool,
+    exhausted: bool,
 }
 
 #[async_trait::async_trait]
@@ -71,8 +75,11 @@ impl<T: Storage + ?Sized> StorageIterator for T {
 
         self.set(&start_key, &encoder::encode(idx)?).await?;
 
-        let start = range.get_start();
-        let end = range.get_index();
+        let (start, end) = match range.is_scanning_reverse() {
+            true => (range.get_index() + 1, range.get_count()),
+            false => (range.get_start(), range.get_index()),
+        };
+
         for i in start..end {
             let key = get_scan_item_key(&key, i);
             let _ = self.del(&key).await;
@@ -82,30 +89,11 @@ impl<T: Storage + ?Sized> StorageIterator for T {
     }
 
     async fn scan_range_reverse(&self, key: &str) -> Box<dyn StorageIter> {
-        todo!()
+        scan_range(self, key, false).await
     }
 
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
-        let start_key = format!("{}-start", key);
-        let count_key = format!("{}-count", key);
-        let start_from_idx = self
-            .get_of_type::<usize>(&start_key)
-            .await
-            .unwrap_or_else(|| 0);
-        let item_in_range = self
-            .get_of_type::<usize>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
-
-        let scan = ScanRange {
-            key: key.to_string(),
-            count: item_in_range,
-            start: start_from_idx,
-            index: start_from_idx,
-            //parent: &self,
-        };
-
-        Box::new(scan)
+        scan_range(self, key, true).await
     }
 
     async fn del_range(&self, key: &str) -> anyhow::Result<()> {
@@ -135,6 +123,37 @@ impl<T: Storage + ?Sized> StorageIterator for T {
     }
 }
 
+async fn scan_range<T: Storage + ?Sized>(
+    storage: &T,
+    key: &str,
+    forward: bool,
+) -> Box<dyn StorageIter> {
+    let start_key = format!("{}-start", key);
+    let count_key = format!("{}-count", key);
+    let start_from_idx = storage
+        .get_of_type::<usize>(&start_key)
+        .await
+        .unwrap_or_else(|| 0);
+    let item_in_range = storage
+        .get_of_type::<usize>(&count_key)
+        .await
+        .unwrap_or_else(|| 0);
+
+    let scan = ScanRange {
+        key: key.to_string(),
+        count: item_in_range,
+        start: start_from_idx,
+        index: match forward {
+            true => start_from_idx,
+            false => item_in_range,
+        },
+        scan_forward: forward,
+        exhausted: false,
+    };
+
+    Box::new(scan)
+}
+
 #[async_trait::async_trait]
 impl StorageIter for ScanRange {
     fn get_index(&self) -> usize {
@@ -145,13 +164,22 @@ impl StorageIter for ScanRange {
         self.start
     }
 
+    fn get_count(&self) -> usize {
+        self.count
+    }
+
     fn get_key(&self) -> String {
         self.key.clone()
     }
 
+    fn is_scanning_reverse(&self) -> bool {
+        !self.scan_forward
+    }
+
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
         loop {
-            if self.count == 0 || self.index >= self.count {
+            if self.exhausted || self.scan_forward && (self.count == 0 || self.index >= self.count)
+            {
                 return None;
             }
 
@@ -159,7 +187,13 @@ impl StorageIter for ScanRange {
 
             let item = storage.get(&key).await;
 
-            self.index += 1;
+            if self.scan_forward {
+                self.index += 1;
+            } else if self.index == 0 {
+                self.exhausted = true;
+            } else {
+                self.index -= 1;
+            }
 
             if item.is_some() {
                 return item;
@@ -201,7 +235,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_del_first_item() -> anyhow::Result<()> {
+    async fn scan_reverse() {
+        let client = create_client().await;
+        let key = format!("key-{}", generate_id());
+
+        for i in 1..5 {
+            // creates item-1 ... item-4
+            client
+                .push(&key, format!("item-{}", i).as_bytes())
+                .await
+                .expect("push");
+        }
+
+        let mut range = client.scan_range_reverse(&key).await; // start from reverse
+        let remaining_items = read_all_string(&mut range, &client).await;
+        assert_eq!(remaining_items, &["item-4", "item-3", "item-2", "item-1"]);
+    }
+
+    #[tokio::test]
+    async fn trim_on_scan_reverse() {
+        let client = create_client().await;
+        let key = format!("key-{}", generate_id());
+
+        for i in 1..5 {
+            // creates item-1 ... item-4
+            client
+                .push(&key, format!("item-{}", i).as_bytes())
+                .await
+                .expect("push");
+        }
+
+        let mut range = client.scan_range_reverse(&key).await; // start from reverse
+
+        assert_eq!(
+            "item-4".to_string(),
+            String::from_utf8(range.next(&client).await.unwrap()).unwrap()
+        );
+        assert_eq!(
+            "item-3".to_string(),
+            String::from_utf8(range.next(&client).await.unwrap()).unwrap()
+        );
+
+        client.trim(range).await.unwrap();
+
+        let mut range = client.scan_range_reverse(&key).await; // start from reverse
+        let remaining_items = read_all_string(&mut range, &client).await;
+        assert_eq!(remaining_items, &["item-2", "item-1"]);
+    }
+
+    #[tokio::test]
+    async fn scan_del_first_item() {
         let client = create_client().await;
         let key = format!("key-{}", generate_id());
 
@@ -218,12 +301,10 @@ mod tests {
 
         let remaining_items = read_all_string(&mut range, &client).await;
         assert_eq!(remaining_items, &["item-2", "item-3", "item-4"]);
-
-        Ok(())
     }
 
     #[tokio::test]
-    async fn scan_del_second_item() -> anyhow::Result<()> {
+    async fn scan_del_second_item() {
         let client = create_client().await;
         let key = format!("key-{}", generate_id());
 
@@ -243,8 +324,6 @@ mod tests {
         let mut range = client.scan_range(&key).await; // start from beginning
         let remaining_items = read_all_string(&mut range, &client).await;
         assert_eq!(remaining_items, &["item-1", "item-3", "item-4"]);
-
-        Ok(())
     }
 
     async fn read_all_string(
