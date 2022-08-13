@@ -1,6 +1,7 @@
 macro_rules! storage_tests {
     () => {
-        use crate::storage::StorageIterator;
+        use crate::storage::{StorageIterator, StorageIter};
+        use crate::{generate_id};
 
         #[tokio::test]
         async fn basic() {
@@ -177,6 +178,111 @@ macro_rules! storage_tests {
                 "item-10",
                 &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
             );
+        }
+
+        #[tokio::test]
+        async fn scan_reverse() {
+            let client = create_client().await;
+            let key = format!("key-{}", generate_id());
+
+            for i in 1..5 {
+                // creates item-1 ... item-4
+                client
+                    .push(&key, format!("item-{}", i).as_bytes())
+                    .await
+                    .expect("push");
+            }
+
+            let mut range = client.scan_range_reverse(&key).await; // start from reverse
+            let remaining_items = read_all_string(&mut range, &client).await;
+            assert_eq!(remaining_items, &["item-4", "item-3", "item-2", "item-1"]);
+        }
+
+        #[tokio::test]
+        async fn trim_on_scan_reverse() {
+            let client = create_client().await;
+            let key = format!("key-{}", generate_id());
+
+            for i in 1..5 {
+                // creates item-1 ... item-4
+                client
+                    .push(&key, format!("item-{}", i).as_bytes())
+                    .await
+                    .expect("push");
+            }
+
+            let mut range = client.scan_range_reverse(&key).await; // start from reverse
+
+            assert_eq!(
+                "item-4".to_string(),
+                String::from_utf8(range.next(&client).await.unwrap()).unwrap()
+            );
+            assert_eq!(
+                "item-3".to_string(),
+                String::from_utf8(range.next(&client).await.unwrap()).unwrap()
+            );
+
+            client.trim(range).await.unwrap();
+
+            let mut range = client.scan_range_reverse(&key).await; // start from reverse
+            let remaining_items = read_all_string(&mut range, &client).await;
+            assert_eq!(remaining_items, &["item-2", "item-1"]);
+        }
+
+        #[tokio::test]
+        async fn scan_del_first_item() {
+            let client = create_client().await;
+            let key = format!("key-{}", generate_id());
+
+            for i in 1..5 {
+                // creates item-1 ... item-4
+                client
+                    .push(&key, format!("item-{}", i).as_bytes())
+                    .await
+                    .expect("push");
+            }
+
+            let mut range = client.scan_range(&key).await;
+            range.del(&client).await;
+
+            let remaining_items = read_all_string(&mut range, &client).await;
+            assert_eq!(remaining_items, &["item-2", "item-3", "item-4"]);
+        }
+
+        #[tokio::test]
+        async fn scan_del_second_item() {
+            let client = create_client().await;
+            let key = format!("key-{}", generate_id());
+
+            for i in 1..5 {
+                // creates item-1 ... item-4
+                client
+                    .push(&key, format!("item-{}", i).as_bytes())
+                    .await
+                    .expect("push");
+            }
+
+            let mut range = client.scan_range(&key).await;
+            assert!(range.next(&client).await.is_some());
+
+            range.del(&client).await;
+
+            let mut range = client.scan_range(&key).await; // start from beginning
+            let remaining_items = read_all_string(&mut range, &client).await;
+            assert_eq!(remaining_items, &["item-1", "item-3", "item-4"]);
+        }
+
+        async fn read_all_string(
+            range: &mut Box<dyn StorageIter>,
+            storage: &Box<dyn Storage>,
+        ) -> Vec<String> {
+            let mut result = Vec::default();
+
+            while let Some(item) = range.next(storage).await {
+                result.push(String::from_utf8(item).expect("read string from range"));
+            }
+
+            result
         }
     };
 }
