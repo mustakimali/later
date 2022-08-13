@@ -22,8 +22,10 @@ jobs:
         shared-key: "later"
 
     - uses: actions/checkout@v3
-    - name: Install, run dependencies and Build (Parallel)
-      run: sh -c "sudo apt install -y lld & ./scripts/init-test.sh & curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin & wait"
+    - name: Install dependencies
+      run: sh -c "sudo apt install -y lld & cargo install sqlx-cli --no-default-features --features native-tls,postgres & curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin & wait"
+    - name: Run docker dependencies
+      run: "./scripts/init-test.sh"
     - name: Run tests
       run: cargo nextest run
     - name: Run doctests
