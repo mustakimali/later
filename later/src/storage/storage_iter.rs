@@ -8,6 +8,7 @@ pub trait StorageIterator {
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
+    async fn scan_range_reverse(&self, key: &str) -> Box<dyn StorageIter>;
     async fn del_range(&self, key: &str) -> anyhow::Result<()>;
 }
 
@@ -79,6 +80,11 @@ impl<T: Storage + ?Sized> StorageIterator for T {
 
         Ok(())
     }
+
+    async fn scan_range_reverse(&self, key: &str) -> Box<dyn StorageIter> {
+        todo!()
+    }
+
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter> {
         let start_key = format!("{}-start", key);
         let count_key = format!("{}-count", key);
