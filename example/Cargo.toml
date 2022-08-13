@@ -12,6 +12,11 @@ later = { path = "../later/", features = ["redis", "postgres"] }
 
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }
-tokio = "1.20.1"
 anyhow = "1.0.60"
 serde = "1.0"
+
+tracing = "0.1.36"
+tracing-subscriber = { version = "0.3", default-features = false }
+tracing-opentelemetry = "0.17.4"
+opentelemetry = "0.17.0"
+opentelemetry-jaeger = "0.16.0"

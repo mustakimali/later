@@ -3,6 +3,10 @@
 docker run -d -p 5672:5672 -p 15672:15672 --name rabbit rabbitmq:management
 docker run --rm -d --name redis -p 6379:6379 redis
 
+# jaegar UI to run examples
+# View: http://localhost:16686
+docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 jaegertracing/all-in-one:latest
+
 if ! nc -z localhost 5432; then
     echo 'starting docker "postgres" on port 5432' >&2
     docker run --rm -d --name postgres -p 5432:5432 \

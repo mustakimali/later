@@ -32,21 +32,25 @@ impl Persist {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "trace")]
     pub async fn get_job(&self, id: JobId) -> Option<Job> {
         let id = IdOf::SavedJob(id).get_id(&self.key_prefix);
         self.get_of_type::<Job>(id).await
     }
 
+    #[tracing::instrument(skip(self), level = "trace")]
     pub async fn get_recurring_job(&self, id: RecurringJobId) -> Option<RecurringJob> {
         let id = IdOf::SavedRecurringJob(id).get_id(&self.key_prefix);
         self.get_of_type::<RecurringJob>(id).await
     }
 
+    #[tracing::instrument(skip(self), level = "trace")]
     pub async fn expire(&self, job_id: JobId) -> anyhow::Result<()> {
         let id = IdOf::SavedJob(job_id).get_id(&self.key_prefix);
         Ok(self.inner.del(&id.to_string()).await?)
     }
 
+    #[tracing::instrument(skip(self, range), level = "trace")]
     pub async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
         Ok(self.inner.trim(range).await?)
     }
@@ -66,27 +70,31 @@ impl Persist {
         self.save(id, job).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn save_recurring_job(&self, job: &RecurringJob) -> anyhow::Result<()> {
         let id = IdOf::SavedRecurringJob(job.id.clone()).get_id(&self.key_prefix);
         self.save(id, job).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn save<T>(&self, id: Id, item: T) -> anyhow::Result<()>
     where
-        T: Serialize,
+        T: Serialize + std::fmt::Debug,
     {
         let bytes = encoder::encode(item)?;
         self.inner.set(&id.to_string(), &bytes).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn push<T>(&self, id: Id, item: T) -> anyhow::Result<()>
     where
-        T: Serialize,
+        T: Serialize + std::fmt::Debug,
     {
         let bytes = encoder::encode(item)?;
         self.inner.push(&id.to_string(), &bytes).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn save_continuation(
         &self,
         job_id: &JobId,

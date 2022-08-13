@@ -4,6 +4,7 @@ extern crate rocket;
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
 use rocket::State;
+use tracing::Instrument;
 
 mod bg {
     use serde::{Deserialize, Serialize};
@@ -29,15 +30,17 @@ mod bg {
     pub struct JobContext {}
 }
 
+#[tracing::instrument(skip(_ctx))]
 async fn handle_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
-    println!("On Handle handle_sample_message: {:?}", payload);
+    tracing::info!("On Handle handle_sample_message: {:?}", payload);
 
     Ok(())
 }
 
+#[tracing::instrument(skip(_ctx))]
 async fn handle_another_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
@@ -65,7 +68,7 @@ async fn handle_another_sample_message(
         )
         .await?;
 
-    println!(
+    tracing::info!(
         "On Handle handle_another_sample_message: {:?}, enqueued: cont-1:{}, cont-2(c): {}, cont-3(c): {}",
         payload, parent_job_id, child_job_1_id, child_job_2_id
     );
@@ -78,6 +81,7 @@ struct AppContext {
 }
 
 #[get("/")]
+#[tracing::instrument(skip(state))]
 async fn hello(state: &State<AppContext>) -> String {
     let id = later::generate_id();
     let msg = AnotherSampleMessage {
@@ -88,12 +92,38 @@ async fn hello(state: &State<AppContext>) -> String {
 }
 
 #[get("/metrics")]
+#[tracing::instrument(skip(state))]
 async fn metrics(state: &State<AppContext>) -> String {
     state.jobs.get_metrics().expect("metrics")
 }
 
 #[launch]
-async fn rocket() -> _ {
+async fn rocket() -> rocket::Rocket<rocket::Build> {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::Registry;
+
+    if let Ok(_) = std::env::var("ENABLE_JAEGER") {
+        let tracer_jaeger = opentelemetry_jaeger::new_pipeline()
+            .with_service_name("later-redis-example")
+            .install_simple()
+            .unwrap();
+        let layer_jaeger = tracing_opentelemetry::layer().with_tracer(tracer_jaeger);
+        let layer_console = tracing_subscriber::fmt::Layer::new();
+
+        let subscriber = Registry::default().with(layer_jaeger).with(layer_console);
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+    } else {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+    }
+
+    start()
+        .instrument(tracing::info_span!("start application"))
+        .await
+}
+
+async fn start() -> rocket::Rocket<rocket::Build> {
     let job_ctx = JobContext {};
     let storage = later::storage::Redis::new("redis://127.0.0.1/")
         .await

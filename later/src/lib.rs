@@ -241,6 +241,7 @@ pub use anyhow;
 pub use async_trait;
 pub use futures;
 pub use later_derive::background_job;
+pub use tracing::instrument;
 
 mod bg_job_server;
 mod bg_job_server_publisher;

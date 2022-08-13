@@ -1,4 +1,5 @@
 use crate::{JobId, RecurringJobId};
+#[derive(Debug)]
 pub(crate) struct Id(String);
 impl Id {
     pub fn to_string(&self) -> String {

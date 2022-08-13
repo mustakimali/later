@@ -174,6 +174,7 @@ impl ToTokens for TraitImpl {
             where
                 C: Sync + Send + 'static,
             {
+                #[::later::instrument(skip(payload, self))]
                 async fn dispatch(&self, ptype: String, payload: &[u8]) -> anyhow::Result<()> {
                     use ::later::core::JobParameter;
 

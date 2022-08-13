@@ -7,6 +7,7 @@ use crate::{
 use async_std::channel::Sender;
 use std::{sync::Arc, time::Duration};
 
+#[tracing::instrument(level = "trace"a, skip(handler))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
@@ -71,6 +72,7 @@ where
     })
 }
 
+#[tracing::instrument(level = "trace", skip(handler))]
 async fn handle_poll_delayed_job_command<C, H: BgJobHandler<C>>(
     handler: Arc<H>,
 ) -> anyhow::Result<()> {
@@ -111,6 +113,7 @@ async fn handle_poll_delayed_job_command<C, H: BgJobHandler<C>>(
     Ok(())
 }
 
+#[tracing::instrument(level = "trace", skip(handler))]
 async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
     handler: Arc<H>,
 ) -> anyhow::Result<()> {
@@ -146,6 +149,7 @@ async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
     Ok(())
 }
 
+#[tracing::instrument(skip(handler))]
 async fn handle_job<C, H>(job: Job, handler: Arc<H>) -> Result<(), anyhow::Error>
 where
     C: Sync + Send,
@@ -177,7 +181,7 @@ where
                 .await
             {
                 for next in waiting_jobs {
-                    println!("Continuing {} -> {}", success_job_id, next.id);
+                    tracing::info!("Continuing {} -> {}", success_job_id, next.id);
 
                     let next_job = next.transition(); // Waiting -> Enqueued
                     publisher.save(&next_job).await?;
@@ -193,7 +197,7 @@ where
             }
         }
         Err(e) => {
-            println!("Failed job {}: {}", running_job.id, e);
+            tracing::warn!("Failed job {}: {}", running_job.id, e);
 
             // failed, requeue
             let reqd_job = running_job.transition_req()?;

@@ -154,7 +154,7 @@ where
     ) {
         let last_run_since = chrono::Utc::now() - last_run;
         if last_run_since.num_seconds() > if_not_sec {
-            println!("Ops {} did not run for a while: Enqueuing", cmd);
+            tracing::warn!("Ops {} did not run for a while: Enqueuing", cmd);
 
             let _ = tx.send(cmd).await;
         }
@@ -172,7 +172,7 @@ where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    println!("[Worker#{}] Starting", worker_id);
+    tracing::info!("[Worker#{}] Starting", worker_id);
 
     let mut consumer = mq_client.new_consumer(routing_key, worker_id).await?;
 
@@ -187,7 +187,7 @@ where
                     delivery.ack().await?;
                 }
                 Err(err) => {
-                    println!(
+                    tracing::warn!(
                         "[Worker#{}] Unknown message received [{} bytes]: {}",
                         worker_id,
                         delivery.data().len(),
@@ -198,12 +198,12 @@ where
                 }
             },
             Err(e) => {
-                println!("[Worker#{}] Consumer ended: {:?}", worker_id, e);
+                tracing::warn!("[Worker#{}] Consumer ended: {:?}", worker_id, e);
                 //break;
             }
         }
     }
 
-    println!("[Worker#{}] Ended", worker_id);
+    tracing::info!("[Worker#{}] Ended", worker_id);
     Ok(())
 }
