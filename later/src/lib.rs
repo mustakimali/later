@@ -217,7 +217,7 @@
 //!     SendNewsletter{
 //!         address: "hello@rust-lang.org".to_string(),
 //!     },
-//!     "0 6 1 * * *" // 6am, 1st day of every month
+//!     "0 6 1 * * *".to_string() // 6am, 1st day of every month
 //! ).await?;
 //! # Ok(())
 //! # }
