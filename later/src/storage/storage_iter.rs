@@ -18,6 +18,7 @@ pub trait StorageIter: Sync + Send {
     fn get_index(&self) -> usize;
 
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>>;
+    async fn del(&mut self, storage: &Box<dyn Storage>);
     async fn count(&mut self, storage: &Box<dyn Storage>) -> usize;
 }
 
@@ -143,19 +144,27 @@ impl StorageIter for ScanRange {
     }
 
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
-        if self.count == 0 || self.index == self.count {
-            return None;
-        }
+        loop {
+            if self.count == 0 || self.index >= self.count {
+                return None;
+            }
 
-        let key = get_scan_item_key(&self.key, self.index);
+            let key = get_scan_item_key(&self.key, self.index);
 
-        let item = storage.get(&key).await;
+            let item = storage.get(&key).await;
 
-        if item.is_some() {
             self.index += 1;
-        }
 
-        item
+            if item.is_some() {
+                return item;
+            }
+            // try until reach the end of the range
+        }
+    }
+
+    async fn del(&mut self, storage: &Box<dyn Storage>) {
+        let key = get_scan_item_key(&self.key, self.index);
+        let _ = storage.del(&key).await;
     }
 
     async fn count(&mut self, storage: &Box<dyn Storage>) -> usize {
@@ -170,4 +179,78 @@ impl StorageIter for ScanRange {
 
 fn get_scan_item_key(range_key: &str, idx: usize) -> String {
     format!("{}-{}", range_key, idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{generate_id, storage::Redis};
+
+    async fn create_client() -> Box<dyn Storage> {
+        let redis = Redis::new("redis://127.0.0.1/")
+            .await
+            .expect("connect to redis");
+
+        Box::new(redis)
+    }
+
+    #[tokio::test]
+    async fn scan_del_first_item() -> anyhow::Result<()> {
+        let client = create_client().await;
+        let key = format!("key-{}", generate_id());
+
+        for i in 1..5 {
+            // creates item-1 ... item-4
+            client
+                .push(&key, format!("item-{}", i).as_bytes())
+                .await
+                .expect("push");
+        }
+
+        let mut range = client.scan_range(&key).await;
+        range.del(&client).await;
+
+        let remaining_items = read_all_string(&mut range, &client).await;
+        assert_eq!(remaining_items, &["item-2", "item-3", "item-4"]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scan_del_second_item() -> anyhow::Result<()> {
+        let client = create_client().await;
+        let key = format!("key-{}", generate_id());
+
+        for i in 1..5 {
+            // creates item-1 ... item-4
+            client
+                .push(&key, format!("item-{}", i).as_bytes())
+                .await
+                .expect("push");
+        }
+
+        let mut range = client.scan_range(&key).await;
+        assert!(range.next(&client).await.is_some());
+
+        range.del(&client).await;
+
+        let mut range = client.scan_range(&key).await; // start from beginning
+        let remaining_items = read_all_string(&mut range, &client).await;
+        assert_eq!(remaining_items, &["item-1", "item-3", "item-4"]);
+
+        Ok(())
+    }
+
+    async fn read_all_string(
+        range: &mut Box<dyn StorageIter>,
+        storage: &Box<dyn Storage>,
+    ) -> Vec<String> {
+        let mut result = Vec::default();
+
+        while let Some(item) = range.next(storage).await {
+            result.push(String::from_utf8(item).expect("read string from range"));
+        }
+
+        result
+    }
 }
