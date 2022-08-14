@@ -23,6 +23,7 @@ impl BackgroundJobServerPublisher {
         let persist = Arc::new(Persist::new(storage, routing_key.clone()));
         let stats: Box<dyn EventsHandler> = {
             if cfg!(feature = "dashboard") {
+                tracing::info!("Enabling Dashboard Stats Collector");
                 Box::new(
                     Stats::new(&routing_key, persist.clone(), &mq_client.clone())
                         .await
@@ -88,6 +89,7 @@ impl BackgroundJobServerPublisher {
         self.enqueue_internal(message, None, None, None).await
     }
 
+    #[tracing::instrument(skip(self, message), fields(ptype = message.get_ptype(), job_id), name = "init_create_job")]
     async fn enqueue_internal(
         &self,
         message: impl JobParameter,
@@ -96,6 +98,8 @@ impl BackgroundJobServerPublisher {
         recurring_job_id: Option<RecurringJobId>,
     ) -> anyhow::Result<JobId> {
         let job = create_job(message, parent_job_id, delay_until, recurring_job_id)?;
+
+        tracing::Span::current().record("job_id", job.id.to_string());
 
         Ok(self.enqueue_internal_job(job).await?)
     }

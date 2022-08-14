@@ -7,7 +7,7 @@ use crate::{
 use async_std::channel::Sender;
 use std::{sync::Arc, time::Duration};
 
-#[tracing::instrument(level = "trace"a, skip(handler))]
+#[tracing::instrument(level = "trace", skip(handler))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,

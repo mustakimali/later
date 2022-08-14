@@ -208,6 +208,7 @@ pub(crate) struct RequeuedStage {
 }
 
 impl Job {
+    #[tracing::instrument]
     pub fn transition(self) -> Job {
         let next_stage = self.stage.clone().transition();
         tracing::debug!(

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tracing::instrument;
+
 use crate::{
     models::{Job, JobConfig, Stage},
     mq::{MqClient, MqConsumer, MqPublisher},
@@ -32,6 +34,7 @@ impl From<&Job> for JobMeta {
     }
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Event {
     NewJob(JobMeta),
     JobTransitioned(Stage, JobMeta),
@@ -68,7 +71,6 @@ async fn handle_stat_events(
     consumer: &mut Box<dyn MqConsumer>,
     storage: Arc<Persist>,
 ) -> anyhow::Result<()> {
-    storage.yoyo();
     while let Some(_) = consumer.next().await {}
 
     Ok(())
@@ -76,9 +78,7 @@ async fn handle_stat_events(
 
 #[async_trait::async_trait]
 impl EventsHandler for Stats {
-    async fn new_event(&self, event: Event) {
-        todo!()
-    }
+    async fn new_event(&self, event: Event) {}
 }
 
 pub struct NoOpStats;
@@ -91,10 +91,11 @@ impl EventsHandler for NoOpStats {
 }
 
 impl Persist {
-    fn yoyo(&self) {}
+    
 }
 
 impl Event {
+    #[instrument(skip(p), name = "publish_stat_event")]
     pub(crate) async fn publish(self, p: &BackgroundJobServerPublisher) {
         p.stats.new_event(self).await
     }

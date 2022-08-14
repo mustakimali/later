@@ -6,7 +6,7 @@ use lapin::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
         ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
     },
-    types::FieldTable,
+    types::{AMQPValue, FieldTable},
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
 
@@ -73,6 +73,11 @@ impl MqConsumer for Consumer {
 impl MqPublisher for Publisher {
     async fn publish(&self, payload: &[u8]) -> anyhow::Result<()> {
         let message_bytes = payload;
+        let mut header = FieldTable::default();
+        if let Some(id) = tracing::Span::current().id() {
+            header.insert("trace_id".into(), id.into_u64().into());
+            dbg!(header.clone());
+        }
 
         self.channel
             .basic_publish(
@@ -80,7 +85,7 @@ impl MqPublisher for Publisher {
                 &self.routing_key,
                 BasicPublishOptions::default(),
                 &message_bytes,
-                BasicProperties::default(),
+                BasicProperties::default().with_headers(header),
             )
             .await?;
 
