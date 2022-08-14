@@ -158,16 +158,13 @@ async fn range_trim(storage: Box<dyn Storage>) {
 async fn range_trim_10_items(storage: Box<dyn Storage>) {
     let key = format!("key-{}", crate::generate_id());
 
-    storage.push(&key, "item-1".as_bytes()).await.unwrap();
-    storage.push(&key, "item-2".as_bytes()).await.unwrap();
-    storage.push(&key, "item-3".as_bytes()).await.unwrap();
-    storage.push(&key, "item-4".as_bytes()).await.unwrap();
-    storage.push(&key, "item-5".as_bytes()).await.unwrap();
-    storage.push(&key, "item-6".as_bytes()).await.unwrap();
-    storage.push(&key, "item-7".as_bytes()).await.unwrap();
-    storage.push(&key, "item-8".as_bytes()).await.unwrap();
-    storage.push(&key, "item-9".as_bytes()).await.unwrap();
-    storage.push(&key, "item-10".as_bytes()).await.unwrap();
+    for i in 1..11 {
+        // creates item-1 ... item-10
+        storage
+            .push(&key, format!("item-{}", i).as_bytes())
+            .await
+            .unwrap();
+    }
 
     let mut range = storage.scan_range(&key).await;
     assert!(range.next(&storage).await.is_some());
@@ -199,6 +196,7 @@ async fn range_trim_10_items(storage: Box<dyn Storage>) {
         "item-10",
         &String::from_utf8(range.next(&storage).await.unwrap()).unwrap()
     );
+    assert!(range.next(&storage).await.is_none());
 }
 
 #[test_case(create_redis_client().await; "redis")]
@@ -223,7 +221,7 @@ async fn scan_reverse(storage: Box<dyn Storage>) {
 #[test_case(create_redis_client().await; "redis")]
 #[test_case(create_postgres_client().await; "postgres")]
 #[tokio::test]
-async fn trim_on_scan_reverse(storage: Box<dyn Storage>) {
+async fn scan_reverse_trim(storage: Box<dyn Storage>) {
     let key = format!("key-{}", generate_id());
 
     for i in 1..5 {

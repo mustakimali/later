@@ -23,8 +23,8 @@ impl BackgroundJobServerPublisher {
         Ok(Self {
             storage: Persist::new(storage, routing_key.clone()),
 
-            publisher: publisher,
-            routing_key: routing_key,
+            publisher,
+            routing_key,
         })
     }
 
