@@ -94,18 +94,3 @@ impl Storage for Postgres {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod test_postgres {
-    use super::*;
-
-    async fn create_client() -> Box<dyn Storage> {
-        let postgres = Postgres::new("postgres://test:test@localhost/later_test")
-            .await
-            .expect("connect to postgres");
-
-        Box::new(postgres)
-    }
-
-    super::super::storage_tests::storage_tests! {}
-}
