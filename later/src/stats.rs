@@ -69,7 +69,7 @@ impl Stats {
 
 async fn handle_stat_events(
     consumer: &mut Box<dyn MqConsumer>,
-    storage: Arc<Persist>,
+    _storage: Arc<Persist>,
 ) -> anyhow::Result<()> {
     while let Some(_) = consumer.next().await {}
 
@@ -78,7 +78,7 @@ async fn handle_stat_events(
 
 #[async_trait::async_trait]
 impl EventsHandler for Stats {
-    async fn new_event(&self, event: Event) {}
+    async fn new_event(&self, _event: Event) {}
 }
 
 pub struct NoOpStats;
@@ -90,9 +90,7 @@ impl EventsHandler for NoOpStats {
     }
 }
 
-impl Persist {
-    
-}
+impl Persist {}
 
 impl Event {
     #[instrument(skip(p), name = "publish_stat_event")]

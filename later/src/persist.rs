@@ -104,6 +104,7 @@ impl Persist {
         self.push(id, job_id).await
     }
 
+    #[tracing::instrument(skip(self))]
     pub async fn get_continuation_job(&self, job: &Job) -> Option<Vec<Job>> {
         let id = IdOf::ContinuationOf(job.id.clone()).get_id(&self.key_prefix);
 
