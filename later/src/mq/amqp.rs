@@ -39,6 +39,17 @@ impl RabbitMq {
 
 #[async_trait::async_trait]
 impl MqPayload for Payload {
+    fn get_span_id(&self) -> Option<tracing::span::Id> {
+        self.0
+            .properties
+            .headers()
+            .as_ref()
+            .map(|headers| headers.inner().get("trace_id"))
+            .flatten()
+            .map(|v| v.as_timestamp())
+            .flatten()
+            .map(tracing::span::Id::from_u64)
+    }
     async fn ack(&self) -> anyhow::Result<()> {
         Ok(self.0.ack(BasicAckOptions::default()).await?)
     }
@@ -75,8 +86,8 @@ impl MqPublisher for Publisher {
         let message_bytes = payload;
         let mut header = FieldTable::default();
         if let Some(id) = tracing::Span::current().id() {
+            let id = dbg!(id);
             header.insert("trace_id".into(), id.into_u64().into());
-            dbg!(header.clone());
         }
 
         self.channel

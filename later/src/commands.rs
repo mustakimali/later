@@ -5,19 +5,28 @@ use crate::{
     JobId,
 };
 use async_std::channel::Sender;
+use tracing::field::ValueSet;
 use std::{sync::Arc, time::Duration};
 
-#[tracing::instrument(level = "trace", skip(handler))]
+#[tracing::instrument(skip(handler))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
     handler: &Arc<H>,
     inproc_cmd_tx: &Sender<ChannelCommand>,
+    span_id: Option<tracing::span::Id>,
 ) -> Result<(), anyhow::Error>
 where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    if let Some(span_id) = span_id {
+        // ToDO
+        tracing::Span::current().follows_from(span_id);
+        //let current = tracing::Span::current();
+        //tracing::Span::child_of(span_id, &current.metadata().unwrap(), &ValueSet{});
+    }
+
     tracing::debug!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
 

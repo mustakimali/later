@@ -25,5 +25,6 @@ pub trait MqConsumer: Send + Sync {
 pub trait MqPayload: Send + Sync {
     async fn ack(&self) -> anyhow::Result<()>;
     async fn nack_requeue(&self) -> anyhow::Result<()>;
+    fn get_span_id(&self) -> Option<tracing::span::Id>;
     fn data(&self) -> &[u8];
 }
