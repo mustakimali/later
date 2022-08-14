@@ -232,6 +232,7 @@ use crate::core::BgJobHandler;
 use mq::{MqClient, MqPublisher};
 use persist::Persist;
 use serde::{Deserialize, Serialize};
+use stats::EventsHandler;
 use std::{fmt::Display, marker::PhantomData, sync::Arc};
 use storage::Storage;
 use tokio::task::JoinHandle;
@@ -287,7 +288,8 @@ where
 pub struct BackgroundJobServerPublisher {
     publisher: Box<dyn MqPublisher>,
     routing_key: String,
-    storage: Persist,
+    storage: Arc<Persist>,
+    stats: Box<dyn EventsHandler>,
 }
 
 pub fn generate_id() -> String {

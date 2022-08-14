@@ -9,9 +9,10 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["all"]
-all = ["postgres", "redis"]
+all = ["postgres", "redis", "dashboard"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis"]
+dashboard = []
 
 [dependencies]
 # internal
