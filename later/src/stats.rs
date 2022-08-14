@@ -11,7 +11,7 @@ pub(crate) enum Event<'j> {
 
 #[async_trait::async_trait]
 pub(crate) trait EventsHandler {
-    async fn new_event() -> (); // Infallible
+    async fn new_event(event: Event) -> (); // Infallible
 }
 
 #[allow(dead_code)]
