@@ -1,7 +1,7 @@
 use super::{Postgres, Redis, StorageIter};
 use crate::{
     generate_id,
-    storage::{Storage, StorageIterator},
+    storage::{Storage, StorageEx},
 };
 use test_case::test_case;
 
