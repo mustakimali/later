@@ -13,10 +13,10 @@ pub use crate::storage::postgres::Postgres;
 pub use crate::storage::redis::Redis;
 
 #[cfg(test)]
-mod storage_tests;
+mod tests;
 
-pub use storage_iter::StorageIter;
-pub use storage_iter::StorageIterator;
+pub(crate) use storage_iter::StorageIter;
+pub(crate) use storage_iter::StorageIterator;
 
 #[async_trait::async_trait]
 pub trait Storage: Sync + Send {

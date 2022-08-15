@@ -6,7 +6,7 @@ use lapin::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
         ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
     },
-    types::FieldTable,
+    types::{AMQPValue, FieldTable, ShortString},
     BasicProperties, Channel, Connection, ConnectionProperties,
 };
 
@@ -39,6 +39,9 @@ impl RabbitMq {
 
 #[async_trait::async_trait]
 impl MqPayload for Payload {
+    fn get_headers(&self) -> Option<FieldTable> {
+        self.0.properties.headers().clone()
+    }
     async fn ack(&self) -> anyhow::Result<()> {
         Ok(self.0.ack(BasicAckOptions::default()).await?)
     }
@@ -69,9 +72,56 @@ impl MqConsumer for Consumer {
     }
 }
 
+pub(crate) struct TraceContextSuff(FieldTable);
+impl TraceContextSuff {
+    pub(crate) fn new(f: FieldTable) -> Self {
+        Self(f)
+    }
+}
+
+impl opentelemetry::propagation::Injector for TraceContextSuff {
+    fn set(&mut self, key: &str, value: String) {
+        self.0
+            .insert(ShortString::from(key), AMQPValue::LongString(value.into()));
+    }
+}
+impl opentelemetry::propagation::Extractor for TraceContextSuff {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0
+            .inner()
+            .get(key)
+            .map(|v| v.as_long_string())
+            .flatten()
+            .map(|v| v.as_bytes())
+            .map(|v| std::str::from_utf8(v).ok())
+            .flatten()
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.inner().iter().map(|(k, _v)| k.as_str()).collect()
+    }
+}
+
+impl TraceContextSuff {
+    fn get(self) -> FieldTable {
+        self.0
+    }
+}
+
 #[async_trait::async_trait]
 impl MqPublisher for Publisher {
     async fn publish(&self, payload: &[u8]) -> anyhow::Result<()> {
+        use opentelemetry::{
+            propagation::TextMapPropagator, sdk::propagation::TraceContextPropagator,
+        };
+        use tracing::Span;
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+        let header = FieldTable::default();
+        let mut injector = TraceContextSuff::new(header);
+        let propagator = TraceContextPropagator::new();
+        propagator.inject_context(&Span::current().context(), &mut injector);
+
         let message_bytes = payload;
 
         self.channel
@@ -80,7 +130,7 @@ impl MqPublisher for Publisher {
                 &self.routing_key,
                 BasicPublishOptions::default(),
                 &message_bytes,
-                BasicProperties::default(),
+                BasicProperties::default().with_headers(injector.get()),
             )
             .await?;
 

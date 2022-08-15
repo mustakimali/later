@@ -1,3 +1,5 @@
+use lapin::types::FieldTable;
+
 pub mod amqp;
 
 #[async_trait::async_trait]
@@ -25,5 +27,6 @@ pub trait MqConsumer: Send + Sync {
 pub trait MqPayload: Send + Sync {
     async fn ack(&self) -> anyhow::Result<()>;
     async fn nack_requeue(&self) -> anyhow::Result<()>;
+    fn get_headers(&self) -> Option<FieldTable>; // ToDo: do not leak lapin
     fn data(&self) -> &[u8];
 }

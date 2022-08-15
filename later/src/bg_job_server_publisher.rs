@@ -3,6 +3,7 @@ use crate::models::{AmqpCommand, Job, RecurringJob};
 use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
 use crate::mq::MqClient;
 use crate::persist::Persist;
+use crate::stats::{Event, EventsHandler, NoOpStats, Stats};
 use crate::storage::Storage;
 use crate::{encoder, RecurringJobId};
 use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
@@ -19,12 +20,26 @@ impl BackgroundJobServerPublisher {
     ) -> anyhow::Result<Self> {
         let routing_key = format!("later-{}", id);
         let publisher = mq_client.new_publisher(&routing_key).await?;
+        let persist = Arc::new(Persist::new(storage, routing_key.clone()));
+        let stats: Box<dyn EventsHandler> = {
+            if cfg!(feature = "dashboard") {
+                tracing::info!("Enabling Dashboard Stats Collector");
+                Box::new(
+                    Stats::new(&routing_key, persist.clone(), &mq_client.clone())
+                        .await
+                        .expect("configure stats"),
+                )
+            } else {
+                Box::new(NoOpStats {})
+            }
+        };
 
         Ok(Self {
-            storage: Persist::new(storage, routing_key.clone()),
+            storage: persist.clone(),
 
-            publisher: publisher,
-            routing_key: routing_key,
+            stats,
+            publisher,
+            routing_key,
         })
     }
 
@@ -74,6 +89,7 @@ impl BackgroundJobServerPublisher {
         self.enqueue_internal(message, None, None, None).await
     }
 
+    #[tracing::instrument(skip(self, message), fields(ptype = message.get_ptype(), job_id), name = "init_create_job")]
     async fn enqueue_internal(
         &self,
         message: impl JobParameter,
@@ -83,6 +99,8 @@ impl BackgroundJobServerPublisher {
     ) -> anyhow::Result<JobId> {
         let job = create_job(message, parent_job_id, delay_until, recurring_job_id)?;
 
+        tracing::Span::current().record("job_id", job.id.to_string());
+
         Ok(self.enqueue_internal_job(job).await?)
     }
 
@@ -90,6 +108,7 @@ impl BackgroundJobServerPublisher {
         let id = job.id.clone();
 
         self.save(&job).await?;
+        Event::NewJob((&job).into()).publish(&self).await;
         self.handle_job_enqueue_initial(job).await?;
         Ok(id)
     }

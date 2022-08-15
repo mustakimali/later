@@ -106,9 +106,9 @@
 //!     Ok(()) // or Err(_) to retry this message
 //! }
 //! ```
-//! 
+//!
 //! This example use `Redis` storage. More storage is available in the [`storage`] module.
-//! 
+//!
 //! ---
 //!
 //! ## Fire and forget jobs
@@ -201,7 +201,7 @@
 //! ## Recurring jobs
 //!
 //! Run recurring job based on cron schedule.
-//! 
+//!
 //! ```no_run
 //! # #[derive(serde::Serialize, serde::Deserialize)]
 //! # pub struct SendNewsletter { pub address: String }
@@ -217,14 +217,14 @@
 //!     SendNewsletter{
 //!         address: "hello@rust-lang.org".to_string(),
 //!     },
-//!     "0 6 1 * * *" // 6am, 1st day of every month
+//!     "0 6 1 * * *".to_string() // 6am, 1st day of every month
 //! ).await?;
 //! # Ok(())
 //! # }
 //! ```
-//! 
+//!
 //! ## Storage
-//! 
+//!
 //! * `redis`: `later::storage::Redis::new("redis://127.0.0.1/").await`
 //! * `postgres`: `later::storage::Postgres::new("postgres://test:test@localhost/later_test").await` (Requires feature `postgres`)
 use crate::core::BgJobHandler;
@@ -232,6 +232,7 @@ use crate::core::BgJobHandler;
 use mq::{MqClient, MqPublisher};
 use persist::Persist;
 use serde::{Deserialize, Serialize};
+use stats::EventsHandler;
 use std::{fmt::Display, marker::PhantomData, sync::Arc};
 use storage::Storage;
 use tokio::task::JoinHandle;
@@ -287,11 +288,12 @@ where
 pub struct BackgroundJobServerPublisher {
     publisher: Box<dyn MqPublisher>,
     routing_key: String,
-    storage: Persist,
+    storage: Arc<Persist>,
+    stats: Box<dyn EventsHandler>,
 }
 
 pub fn generate_id() -> String {
-    rusty_ulid::generate_ulid_string()
+    rusty_ulid::generate_ulid_string().to_lowercase()
 }
 
 #[derive(TypedBuilder)]

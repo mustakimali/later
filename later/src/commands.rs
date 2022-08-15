@@ -5,19 +5,34 @@ use crate::{
     JobId,
 };
 use async_std::channel::Sender;
+use lapin::types::FieldTable;
+
 use std::{sync::Arc, time::Duration};
 
-#[tracing::instrument(level = "trace"a, skip(handler))]
+#[tracing::instrument(skip(handler))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
     handler: &Arc<H>,
     inproc_cmd_tx: &Sender<ChannelCommand>,
+    headers: Option<FieldTable>,
 ) -> Result<(), anyhow::Error>
 where
     C: Sync + Send,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
+    if let Some(headers) = headers {
+        use opentelemetry::{
+            propagation::TextMapPropagator, sdk::propagation::TraceContextPropagator,
+        };
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+        let carrier = crate::mq::amqp::TraceContextSuff::new(headers);
+        let propagator = TraceContextPropagator::new();
+        let context = propagator.extract(&carrier);
+        tracing::Span::current().set_parent(context);
+    }
+
     tracing::debug!("Amqp Command: {:?}", command);
     metrics::COUNTER.record_command(&command);
 

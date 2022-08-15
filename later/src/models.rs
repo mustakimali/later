@@ -106,7 +106,7 @@ impl TryFrom<RecurringJob> for Job {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct JobConfig {
     pub total_retries: usize,
@@ -208,6 +208,7 @@ pub(crate) struct RequeuedStage {
 }
 
 impl Job {
+    #[tracing::instrument]
     pub fn transition(self) -> Job {
         let next_stage = self.stage.clone().transition();
         tracing::debug!(

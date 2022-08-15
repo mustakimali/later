@@ -102,21 +102,24 @@ async fn rocket() -> rocket::Rocket<rocket::Build> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Registry;
 
-    if let Ok(_) = std::env::var("ENABLE_JAEGER") {
-        let tracer_jaeger = opentelemetry_jaeger::new_pipeline()
-            .with_service_name("later-postgres-example")
-            .install_simple()
-            .unwrap();
-        let layer_jaeger = tracing_opentelemetry::layer().with_tracer(tracer_jaeger);
-        let layer_console = tracing_subscriber::fmt::Layer::new();
+    let layer_console = tracing_subscriber::fmt::Layer::new();
 
-        let subscriber = Registry::default().with(layer_jaeger).with(layer_console);
-        tracing::subscriber::set_global_default(subscriber).unwrap();
-    } else {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .init();
-    }
+    let subscriber = Registry::default()
+        .with(tracing_subscriber::EnvFilter::new("INFO"))
+        .with(layer_console);
+
+    match std::env::var("ENABLE_JAEGER") {
+        Ok(_) => {
+            let tracer_jaeger = opentelemetry_jaeger::new_pipeline()
+                .with_service_name("later-postgres-example")
+                .install_simple()
+                .unwrap();
+            let layer_jaeger = tracing_opentelemetry::layer().with_tracer(tracer_jaeger);
+            let subscriber = subscriber.with(layer_jaeger);
+            tracing::subscriber::set_global_default(subscriber).unwrap();
+        }
+        Err(_) => tracing::subscriber::set_global_default(subscriber).unwrap(),
+    };
 
     start()
         .instrument(tracing::info_span!("start application"))

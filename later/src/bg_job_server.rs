@@ -180,9 +180,16 @@ where
         match message {
             Ok(delivery) => match encoder::decode::<AmqpCommand>(&delivery.data()) {
                 Ok(command) => {
-                    let _ =
-                        commands::handle_amqp_command(command, worker_id, &handler, &inproc_cmd_tx)
-                            .await;
+                    let headers = delivery.get_headers();
+
+                    let _ = commands::handle_amqp_command(
+                        command,
+                        worker_id,
+                        &handler,
+                        &inproc_cmd_tx,
+                        headers,
+                    )
+                    .await;
 
                     delivery.ack().await?;
                 }

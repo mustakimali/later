@@ -53,18 +53,3 @@ impl Storage for Redis {
             .map_err(anyhow::Error::from)
     }
 }
-
-#[cfg(test)]
-mod test_redis {
-    use super::*;
-
-    async fn create_client() -> Box<dyn Storage> {
-        let redis = Redis::new("redis://127.0.0.1/")
-            .await
-            .expect("connect to redis");
-
-        Box::new(redis)
-    }
-
-    super::super::storage_tests::storage_tests! {}
-}

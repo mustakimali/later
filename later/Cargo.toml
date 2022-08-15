@@ -8,10 +8,11 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["redis"]
-all = ["postgres", "redis"]
+default = ["all"]
+all = ["postgres", "redis", "dashboard"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis"]
+dashboard = []
 
 [dependencies]
 # internal
@@ -38,5 +39,11 @@ prometheus = "0.13.1"
 lazy_static = "1.4.0"
 typed-builder = "0.10.0"
 
+opentelemetry = "0.17.0"
+tracing-opentelemetry = "0.17.4"
+
 sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
+
+[dev-dependencies]
+test-case = "2.2.1"
