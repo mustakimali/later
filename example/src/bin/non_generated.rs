@@ -1,3 +1,6 @@
+//! This example does not use the `later::background_job` macro to generate
+//! server stub. This is used to try new change before copying them to the `later-derive` crate.
+//! All code after the comment /* GENERATED */ is what the macro generates for us.
 use later::{storage::redis::Redis, BackgroundJobServer};
 use macro_generated::*;
 use rocket::State;
