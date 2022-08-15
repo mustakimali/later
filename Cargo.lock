@@ -1237,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "later"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "anyhow",
  "async-mutex",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "later-derive"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "proc-macro2",
