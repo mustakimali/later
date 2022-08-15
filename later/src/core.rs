@@ -6,7 +6,7 @@ use crate::BackgroundJobServerPublisher;
 /// A message that can be used to enqueue a background job
 pub trait JobParameter
 where
-    Self: Sized + Serialize + DeserializeOwned,
+    Self: Serialize + DeserializeOwned,
 {
     fn to_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn from_bytes(payload: &[u8]) -> Self;
