@@ -2,7 +2,7 @@ use crate::encoder;
 use crate::Storage;
 use serde::de::DeserializeOwned;
 #[async_trait::async_trait]
-pub trait StorageIterator {
+pub trait StorageEx {
     async fn get_of_type<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
     // hashset
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
@@ -36,7 +36,7 @@ pub(crate) struct ScanRange {
 }
 
 #[async_trait::async_trait]
-impl<T: Storage + ?Sized> StorageIterator for T {
+impl<T: Storage + ?Sized> StorageEx for T {
     async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
         if let Some(bytes) = self.get(key).await {
             return encoder::decode::<V>(&bytes).ok();
