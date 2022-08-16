@@ -1,6 +1,6 @@
 [package]
 name = "later"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 description = "Distributed Background jobs manager and runner for Rust"
 authors = ["Mohammad Mustakim Ali <i@mustak.im>"]
