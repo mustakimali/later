@@ -2,7 +2,7 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    storage::{Storage, StorageIter, StorageEx},
+    storage::{Storage, StorageEx, StorageIter},
     JobId, RecurringJobId, UtcDateTime,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -23,6 +23,10 @@ impl Persist {
             inner: storage,
             key_prefix,
         }
+    }
+
+    pub fn new_id(&self, id_str: &str) -> Id {
+        Id::new(&self.key_prefix, id_str)
     }
 
     pub fn config(&self) -> Config {

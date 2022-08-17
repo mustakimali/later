@@ -1,7 +1,12 @@
 use crate::{JobId, RecurringJobId};
 #[derive(Debug)]
+/// Application wide identifier of some kind
 pub(crate) struct Id(String);
 impl Id {
+    pub fn new(prefix: &str, id_str: &str) -> Self {
+        Self(format!("{}-{}", prefix, id_str))
+    }
+
     pub fn to_string(&self) -> String {
         self.0.clone()
     }
@@ -27,6 +32,6 @@ impl IdOf {
             IdOf::ConfigDateLastPolledForDelayedJobs => "date-polled-delayed-jobs".into(),
         };
 
-        Id(format!("{}-{}", prefix, id_str))
+        Id::new(prefix, &id_str)
     }
 }
