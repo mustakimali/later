@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::{
     encoder,
@@ -64,7 +64,8 @@ impl Stats {
     ) -> anyhow::Result<Self> {
         let routing_key = format!("{}-stats", main_routing_key);
         let publisher = mq_client.new_publisher(&routing_key).await?;
-        let mut consumer = mq_client.new_consumer(&routing_key, 1).await?;
+        let mut consumer = mq_client.new_consumer(&routing_key, 6).await?;
+        publisher.ensure_consumer().await?;
 
         tokio::spawn(async move {
             let _ = handle_stat_events(&mut consumer, storage).await;
@@ -89,6 +90,7 @@ async fn handle_event(
     delivery: anyhow::Result<Box<dyn MqPayload>>,
     storage: &Arc<Persist>,
 ) -> anyhow::Result<()> {
+    info!("Handling stat event");
     let payload = delivery?;
     let event = encoder::decode::<Event>(&payload.data())?;
 
@@ -110,7 +112,7 @@ async fn handle_event(
             storage.save(new_stage_key, job_id).await?;
         }
     }
-    payload.ack().await;
+    let _ = payload.ack().await;
 
     Ok(())
 }
