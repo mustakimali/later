@@ -64,11 +64,17 @@ impl MqPayload for Payload {
 #[async_trait::async_trait]
 impl MqConsumer for Consumer {
     async fn next(&mut self) -> Option<anyhow::Result<Box<dyn MqPayload>>> {
-        self.inner.next().await.map(|delivery| {
+        let msg = self.inner.next().await.map(|delivery| {
             delivery
                 .map_err(anyhow::Error::from)
                 .map(|d| Box::new(Payload(d)) as Box<dyn MqPayload>)
-        })
+        });
+
+        if let None = msg {
+            tracing::warn!("Subscriber ended");
+        };
+
+        msg
     }
 }
 

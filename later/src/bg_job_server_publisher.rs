@@ -108,7 +108,6 @@ impl BackgroundJobServerPublisher {
         let id = job.id.clone();
 
         self.save(&job).await?;
-        Event::NewJob((&job).into()).publish(&self).await;
         self.handle_job_enqueue_initial(job).await?;
         Ok(id)
     }
@@ -150,11 +149,16 @@ impl BackgroundJobServerPublisher {
                 .save_continuation(&job.id, w.parent_id.clone())
                 .await?;
         }
+
+        // event
+        Event::SaveJob(job.into()).publish(&self).await;
+
         self.storage.save_job(job).await
     }
 
     pub(crate) async fn expire(&self, job: &Job, _duration: Duration) -> anyhow::Result<()> {
         // ToDo: expire properly
+        Event::ExpireJob(job.into()).publish(&self).await;
         self.storage.expire(job.id.clone()).await
     }
 

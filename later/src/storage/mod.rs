@@ -15,8 +15,8 @@ pub use crate::storage::redis::Redis;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use storage_iter::StorageIter;
 pub(crate) use storage_iter::StorageEx;
+pub(crate) use storage_iter::StorageIter;
 
 #[async_trait::async_trait]
 pub trait Storage: Sync + Send {

@@ -38,13 +38,14 @@ impl From<&Job> for JobMeta {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Event {
-    NewJob(JobMeta),
-    JobTransitioned(Stage, JobMeta),
+    SaveJob(JobMeta),
+    ExpireJob(JobMeta),
 }
 
 enum IdOf {
     JobList,
-    JobStage(String),
+    JobsInStage(String),
+    JobMeta(JobId),
 }
 
 #[async_trait::async_trait]
@@ -80,39 +81,69 @@ async fn handle_stat_events(
     storage: Arc<Persist>,
 ) -> anyhow::Result<()> {
     while let Some(delivery) = consumer.next().await {
-        let _ = handle_event(delivery, &storage);
+        if let Ok(payload) = delivery {
+            let _ = handle_event(&payload, &storage).await;
+            let _ = payload.ack().await;
+        }
+    }
+
+    tracing::info!("Stat handler exit ... ");
+    Ok(())
+}
+
+async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> anyhow::Result<()> {
+    let event = encoder::decode::<Event>(&payload.data())?;
+
+    match event {
+        Event::SaveJob(job) => {
+            let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
+            let ex_job = storage.get_of_type::<JobMeta>(meta_id.clone()).await;
+            let is_new_job = ex_job.is_none();
+
+            if let Some(ex_job) = ex_job {
+                // update
+                if ex_job.stage != job.stage {
+                    // save change is stage
+                    handle_stage(storage, Some(ex_job.stage), &job).await?;
+                }
+            };
+
+            // save job list and job meta
+            if is_new_job {
+                storage
+                    .push(storage.get_id(IdOf::JobList), job.id.clone())
+                    .await?;
+                // save first stage
+                handle_stage(storage, None, &job).await?;
+            }
+            storage.save(meta_id, job).await?;
+        }
+        Event::ExpireJob(_) => todo!(),
     }
 
     Ok(())
 }
 
-async fn handle_event(
-    delivery: anyhow::Result<Box<dyn MqPayload>>,
+async fn handle_stage(
     storage: &Arc<Persist>,
+    old_stage: Option<Stage>,
+    job: &JobMeta,
 ) -> anyhow::Result<()> {
-    info!("Handling stat event");
-    let payload = delivery?;
-    let event = encoder::decode::<Event>(&payload.data())?;
-
-    match event {
-        Event::NewJob(job) => {
-            storage.save(storage.get_id(IdOf::JobList), job.id).await?;
-        }
-        Event::JobTransitioned(old_stage, job) => {
-            let job_id = job.id;
+    let job_id = job.id.clone();
+    if let Some(old_stage) = old_stage {
+        if old_stage != job.stage {
             let old_stage = old_stage.get_name();
-            let old_stage_key = storage.get_id(IdOf::JobStage(old_stage.clone()));
-
-            let new_stage = job.stage.get_name();
-            let new_stage_key = storage.get_id(IdOf::JobStage(new_stage.clone()));
+            let old_stage_key = storage.get_id(IdOf::JobsInStage(old_stage.clone()));
 
             // remove from old_stage_key hashset
-
-            // add to new_stage_key hashset
-            storage.save(new_stage_key, job_id).await?;
         }
     }
-    let _ = payload.ack().await;
+
+    let new_stage = job.stage.get_name();
+    let new_stage_key = storage.get_id(IdOf::JobsInStage(new_stage.clone()));
+
+    // add to new_stage_key hashset
+    storage.push(new_stage_key, job_id).await?;
 
     Ok(())
 }
@@ -121,7 +152,8 @@ impl Persist {
     fn get_id(&self, of: IdOf) -> Id {
         let id_str = match of {
             IdOf::JobList => "job-list".to_string(),
-            IdOf::JobStage(s) => format!("job-in-{}", s),
+            IdOf::JobsInStage(s) => format!("job-in-{}", s),
+            IdOf::JobMeta(id) => format!("job-{}", id),
         };
         let id_str = format!("stats-{}", id_str);
 

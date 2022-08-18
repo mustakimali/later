@@ -1,5 +1,5 @@
 use crate::{JobId, RecurringJobId};
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Application wide identifier of some kind
 pub(crate) struct Id(String);
 impl Id {

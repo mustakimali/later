@@ -91,6 +91,22 @@ async fn hello(state: &State<AppContext>) -> String {
     "Hello, world!".to_string()
 }
 
+#[get("/<num>")]
+#[tracing::instrument(skip(state))]
+async fn enqueue_num(num: usize, state: &State<AppContext>) -> String {
+    let mut ids = Vec::new();
+    for i in 0..num {
+        let id = later::generate_id();
+        let msg = SampleMessage {
+            txt: format!("{id}-{}", i),
+        };
+        let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
+        ids.push(id.to_string());
+    }
+
+    ids.join(", ")
+}
+
 #[get("/metrics")]
 #[tracing::instrument(skip(state))]
 async fn metrics(state: &State<AppContext>) -> String {
@@ -149,6 +165,6 @@ async fn start() -> rocket::Rocket<rocket::Build> {
     let ctx = AppContext { jobs: bjs };
 
     rocket::build()
-        .mount("/", routes![hello, metrics])
+        .mount("/", routes![hello, metrics, enqueue_num])
         .manage(ctx)
 }

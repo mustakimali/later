@@ -118,7 +118,7 @@ impl Default for JobConfig {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub(crate) enum Stage {
     /// Scheduled for later or waiting for
@@ -159,7 +159,7 @@ impl DelayedStage {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct DelayedStage {
     pub date: UtcDateTime,
@@ -167,7 +167,7 @@ pub(crate) struct DelayedStage {
     pub not_before: UtcDateTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct WaitingStage {
     pub date: UtcDateTime,
@@ -175,32 +175,32 @@ pub(crate) struct WaitingStage {
     pub parent_id: JobId,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct EnqueuedStage {
     pub date: UtcDateTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct RunningStage {
     pub date: UtcDateTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct SuccessStage {
     pub date: UtcDateTime,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct FailedStage {
     pub date: UtcDateTime,
     pub reason: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) struct RequeuedStage {
     pub date: UtcDateTime,

@@ -259,7 +259,7 @@ pub mod storage;
 
 pub type UtcDateTime = chrono::DateTime<chrono::Utc>;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct JobId(String);
 impl Display for JobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
