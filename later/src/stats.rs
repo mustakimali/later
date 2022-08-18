@@ -81,9 +81,12 @@ async fn handle_stat_events(
     storage: Arc<Persist>,
 ) -> anyhow::Result<()> {
     while let Some(delivery) = consumer.next().await {
-        if let Ok(payload) = delivery {
-            let _ = handle_event(&payload, &storage).await;
-            let _ = payload.ack().await;
+        match delivery {
+            Ok(payload) => {
+                let _ = handle_event(&payload, &storage).await;
+                let _ = payload.ack().await;
+            }
+            Err(e) => tracing::warn!("Error in consumer: {}", e),
         }
     }
 

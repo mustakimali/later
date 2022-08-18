@@ -16,6 +16,7 @@ pub trait MqClient: Send + Sync {
 pub trait MqPublisher: Send + Sync {
     async fn publish(&self, payload: &[u8]) -> anyhow::Result<()>;
     async fn ensure_consumer(&self) -> anyhow::Result<()>;
+    async fn has_consumer(&self) -> anyhow::Result<bool>;
 }
 
 #[async_trait::async_trait]

@@ -4,7 +4,7 @@ use lapin::{
     message::Delivery,
     options::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
-        ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+        BasicQosOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
     },
     types::{AMQPValue, FieldTable, ShortString},
     BasicProperties, Channel, Connection, ConnectionProperties,
@@ -157,6 +157,13 @@ impl MqPublisher for Publisher {
 
         Ok(())
     }
+
+    async fn has_consumer(&self) -> anyhow::Result<bool> {
+        Ok(declare_get_queue(&self.channel, &self.routing_key)
+            .await?
+            .consumer_count()
+            > 0)
+    }
 }
 
 #[async_trait::async_trait]
@@ -169,6 +176,7 @@ impl MqClient for RabbitMq {
         let connection =
             Connection::connect(&self.address, ConnectionProperties::default()).await?;
         let channel = connection.create_channel().await?;
+        channel.basic_qos(50, BasicQosOptions::default()).await?;
 
         let _ = channel
             .exchange_declare(
@@ -194,6 +202,7 @@ impl MqClient for RabbitMq {
                 FieldTable::default(),
             )
             .await?;
+
         let consumer = channel
             .basic_consume(
                 routing_key,

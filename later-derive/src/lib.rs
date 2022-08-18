@@ -144,6 +144,7 @@ impl ToTokens for TraitImpl {
 
                 pub async fn build(self) -> anyhow::Result<later::BackgroundJobServer<C, #name<C>>>
                 {
+                    let config = self.config.to_server_config();
                     let mq_client = ::std::sync::Arc::new(self.config.message_queue_client);
 
                     let publisher = later::BackgroundJobServerPublisher::new(
@@ -162,7 +163,7 @@ impl ToTokens for TraitImpl {
                         #(#builder_assignments)*
                     };
 
-                    let server = ::later::BackgroundJobServer::start(handler, mq_client).await?;
+                    let server = ::later::BackgroundJobServer::start(handler, mq_client, config).await?;
                     server.ensure_worker_ready().await?;
 
                     Ok(server)

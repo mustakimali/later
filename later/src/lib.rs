@@ -309,4 +309,20 @@ where
 
     #[builder(default = 6)]
     pub default_retry_count: u8,
+    #[builder(default = 6)]
+    pub worker_count: u8,
+}
+
+pub struct ServerConfig {
+    pub default_retry_count: u8,
+    pub worker_count: u8,
+}
+
+impl<C: Send + Sync> Config<C> {
+    pub fn to_server_config(&self) -> ServerConfig {
+        ServerConfig {
+            default_retry_count: self.default_retry_count,
+            worker_count: self.worker_count,
+        }
+    }
 }

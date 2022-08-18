@@ -234,6 +234,7 @@ mod macro_generated {
         pub async fn build(
             self,
         ) -> anyhow::Result<::later::BackgroundJobServer<C, DeriveHandler<C>>> {
+            let config = self.config.to_server_config();
             let mq_client = ::std::sync::Arc::new(self.config.message_queue_client);
 
             let publisher = ::later::BackgroundJobServerPublisher::new(
@@ -254,7 +255,7 @@ mod macro_generated {
                 another_sample_message: self.another_sample_message,
             };
 
-            let server = ::later::BackgroundJobServer::start(handler, mq_client).await?;
+            let server = ::later::BackgroundJobServer::start(handler, mq_client, config).await?;
             server.ensure_worker_ready().await?;
 
             Ok(server)
