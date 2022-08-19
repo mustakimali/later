@@ -49,7 +49,7 @@ async fn range_basic(storage: Box<dyn Storage>) {
     }
 
     let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let count = scan_result.count().await;
 
     assert_eq!(10, count);
 }
@@ -71,7 +71,7 @@ async fn range_basic_2_items(storage: Box<dyn Storage>) {
         .unwrap();
 
     let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let count = scan_result.count().await;
 
     assert_eq!(2, count);
 
@@ -98,7 +98,7 @@ async fn range_basic_1_item(storage: Box<dyn Storage>) {
         .unwrap();
 
     let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let count = scan_result.count().await;
 
     assert_eq!(1, count);
 
@@ -125,7 +125,7 @@ async fn range_trim(storage: Box<dyn Storage>) {
             .unwrap();
     }
 
-    assert_eq!(100, storage.scan_range(&key).await.count(&storage).await);
+    assert_eq!(100, storage.scan_range(&key).await.count().await);
 
     // scan first 50
     let mut range = storage.scan_range(&key).await;
@@ -142,14 +142,14 @@ async fn range_trim(storage: Box<dyn Storage>) {
 
     // should have only 50
     let mut range = storage.scan_range(&key).await;
-    assert_eq!(50, range.count(&storage).await);
+    assert_eq!(50, range.count().await);
 
     // should be empty
     let mut range = storage.scan_range(&key).await;
     while range.next(&storage).await.is_some() {}
     let _ = storage.trim(range).await;
 
-    assert_eq!(0, storage.scan_range(&key).await.count(&storage).await); // should be empty
+    assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
 }
 
 #[test_case(create_redis_client().await; "redis")]

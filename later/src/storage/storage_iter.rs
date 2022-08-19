@@ -13,22 +13,38 @@ pub trait StorageEx {
 }
 
 #[async_trait::async_trait]
+/// Iterator for a hashset that works with any [`storage`] implementation.
 pub trait StorageIter: Sync + Send {
     fn get_key(&self) -> String;
+    /// start pointer
     fn get_start(&self) -> usize;
+    /// current pointer
     fn get_index(&self) -> usize;
-    fn get_count(&self) -> usize;
+    /// end pointer
+    fn get_end(&self) -> usize;
 
     fn is_scanning_reverse(&self) -> bool;
 
+    /// return the next item if available.
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>>;
+
+    /// delete an item from the hashset.
+    /// This replace the current item with the first item and moves
+    /// the starts pointer by one.
     async fn del(&mut self, storage: &Box<dyn Storage>);
-    async fn count(&mut self, storage: &Box<dyn Storage>) -> usize;
+
+    /// Returns the total element in this hashset.
+    ///
+    /// Note: this does not take into account any items that
+    /// may have been added since the iterator was created.
+    /// In order to get the true count you must scan the entire set
+    /// by calling `next`.
+    async fn count(&self) -> usize;
 }
 
 pub(crate) struct ScanRange {
     key: String,
-    count: usize,
+    end: usize,
     start: usize,
     index: usize,
     scan_forward: bool,
@@ -76,7 +92,7 @@ impl<T: Storage + ?Sized> StorageEx for T {
         self.set(&start_key, &encoder::encode(idx)?).await?;
 
         let (start, end) = match range.is_scanning_reverse() {
-            true => (range.get_index() + 1, range.get_count()),
+            true => (range.get_index() + 1, range.get_end()),
             false => (range.get_start(), range.get_index()),
         };
 
@@ -141,7 +157,7 @@ async fn scan_range<T: Storage + ?Sized>(
 
     let scan = ScanRange {
         key: key.to_string(),
-        count: item_in_range,
+        end: item_in_range,
         start: start_from_idx,
         index: match forward {
             true => start_from_idx,
@@ -164,8 +180,8 @@ impl StorageIter for ScanRange {
         self.start
     }
 
-    fn get_count(&self) -> usize {
-        self.count
+    fn get_end(&self) -> usize {
+        self.end
     }
 
     fn get_key(&self) -> String {
@@ -178,8 +194,7 @@ impl StorageIter for ScanRange {
 
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
         loop {
-            if self.exhausted || self.scan_forward && (self.count == 0 || self.index >= self.count)
-            {
+            if self.exhausted || self.scan_forward && (self.end == 0 || self.index >= self.end) {
                 return None;
             }
 
@@ -207,13 +222,8 @@ impl StorageIter for ScanRange {
         let _ = storage.del(&key).await;
     }
 
-    async fn count(&mut self, storage: &Box<dyn Storage>) -> usize {
-        let mut count = 0;
-        while self.next(storage).await.is_some() {
-            count += 1;
-        }
-
-        count
+    async fn count(&self) -> usize {
+        self.end - self.start
     }
 }
 
