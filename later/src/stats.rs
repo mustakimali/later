@@ -121,7 +121,16 @@ async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> a
             }
             storage.save(meta_id, job).await?;
         }
-        Event::ExpireJob(_) => todo!(),
+        Event::ExpireJob(job) => {
+            let job_id = job.id.clone();
+            let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
+            // remove from all stages
+
+            // todo: remove from job-list
+            // storage.get_id(IdOf::JobList)
+
+            storage.del_by_meta_id(meta_id).await?;
+        }
     }
 
     Ok(())
@@ -161,6 +170,10 @@ impl Persist {
         let id_str = format!("stats-{}", id_str);
 
         self.new_id(&id_str)
+    }
+
+    async fn del_by_meta_id(&self, id: Id) -> anyhow::Result<()> {
+        Ok(self.inner.del(&id.to_string()).await?)
     }
 }
 
