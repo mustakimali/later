@@ -218,8 +218,19 @@ impl StorageIter for ScanRange {
     }
 
     async fn del(&mut self, storage: &Box<dyn Storage>) {
-        let key = get_scan_item_key(&self.key, self.index);
-        let _ = storage.del(&key).await;
+        let key_to_be_deleted = get_scan_item_key(&self.key, self.index);
+
+        if self.index == self.start {
+            self.shift_one(&storage).await;
+            let _ = storage.del(&key_to_be_deleted).await;
+            return;
+        }
+
+        let key_first_item = get_scan_item_key(&self.key, self.start);
+        if let Some(first_item) = storage.get(&key_first_item).await {
+            let _ = storage.set(&key_to_be_deleted, &first_item).await;
+            self.shift_one(&storage).await;
+        }
     }
 
     async fn count(&self) -> usize {
@@ -229,4 +240,13 @@ impl StorageIter for ScanRange {
 
 fn get_scan_item_key(range_key: &str, idx: usize) -> String {
     format!("{}-{}", range_key, idx)
+}
+impl ScanRange {
+    async fn shift_one(&mut self, storage: &Box<dyn Storage>) {
+        let start_key = format!("{}-start", self.key);
+        if let Ok(new_start) = encoder::encode(self.start + 1) {
+            let _ = storage.set(&start_key, &new_start).await;
+            self.start += 1;
+        }
+    }
 }

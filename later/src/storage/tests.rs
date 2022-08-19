@@ -48,7 +48,7 @@ async fn range_basic(storage: Box<dyn Storage>) {
             .unwrap();
     }
 
-    let mut scan_result = storage.scan_range(&key).await;
+    let scan_result = storage.scan_range(&key).await;
     let count = scan_result.count().await;
 
     assert_eq!(10, count);
