@@ -2,13 +2,39 @@ use crate::encoder;
 use crate::Storage;
 use serde::de::DeserializeOwned;
 #[async_trait::async_trait]
+/// Extra functionality for all storage implementations.
 pub trait StorageEx {
     async fn get_of_type<T: DeserializeOwned>(&self, key: &str) -> Option<T>;
+
     // hashset
+    /// insert an item into a hahset keyed by `key`. Hashet will be created if this is the first call.
+    ///
+    /// ## Basic of Hashset
+    /// * Duplicate item will be ignored.
+    /// * Hashset can be iterated forward or reverse using [`scan_range`] or [`scan_range_reverse`].
+    /// * An entire hashset can be deleted using `del_range`.
+    /// * At any point during the iteration, calling the [`trim`] will remove already read items.
+    ///
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
+
+    /// Given an iteration, all read items will be removed.
+    ///
+    /// This works regardless of forward or backward read iterator.
     async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()>;
+
+    /// Creates an iterator that read all items in similar order they were added into the hashset.
+    ///
+    /// Note: Deleted items are filled with the first item to keep
+    /// the scanning consistent regardless of the size of the hashset.
+    /// Therefore the scan order won't be strictly maintained.
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
+
+    /// Creates an iterator that read all items in reverse order (newest to oldest)
+    ///
+    /// See note in [`scan_range`].
     async fn scan_range_reverse(&self, key: &str) -> Box<dyn StorageIter>;
+
+    /// Deletes an entire hashset with all items.
     async fn del_range(&self, key: &str) -> anyhow::Result<()>;
 }
 
