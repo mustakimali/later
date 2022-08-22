@@ -12,7 +12,7 @@ later = { path = "../later/", features = ["redis", "postgres"] }
 
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }
-anyhow = "1.0.60"
+anyhow = "1.0.62"
 serde = "1.0"
 
 tracing = "0.1.36"
