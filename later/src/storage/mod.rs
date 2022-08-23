@@ -23,6 +23,7 @@ pub trait Storage: Sync + Send {
     async fn get(&self, key: &str) -> Option<Vec<u8>>;
     async fn set(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
     async fn del(&self, key: &str) -> anyhow::Result<()>;
+    async fn exist(&self, key: &str) -> anyhow::Result<bool>;
 
     async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()>;
 }

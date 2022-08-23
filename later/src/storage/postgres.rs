@@ -93,4 +93,15 @@ impl Storage for Postgres {
 
         Ok(())
     }
+
+    async fn exist(&self, key: &str) -> anyhow::Result<bool> {
+        let result = sqlx::query!(
+            r#"SELECT COUNT(*) as count FROM later_storage WHERE key = $1"#,
+            key
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.count.unwrap_or(0) > 0)
+    }
 }

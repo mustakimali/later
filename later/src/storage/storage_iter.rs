@@ -1,4 +1,5 @@
 use crate::encoder;
+use crate::encoder::encode;
 use crate::Storage;
 use serde::de::DeserializeOwned;
 #[async_trait::async_trait]
@@ -88,18 +89,28 @@ impl<T: Storage + ?Sized> StorageEx for T {
     }
 
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+        let hash = encoder::hash(value);
+        let hash_key = format!("{}-{}", key, hash);
+        if self.exist(&hash_key).await? {
+            return Ok(());
+        }
+
         let count_key = format!("{}-count", key);
-        let count = self
+        let index = self
             .get_of_type::<i32>(&count_key)
             .await
             .unwrap_or_else(|| 0);
 
-        let key = format!("{}-{}", key, count);
+        let key = format!("{}-{}", key, index);
 
         match self.set(&key, value).await {
             Ok(_) => {
                 // store the count
-                self.set(&count_key, &encoder::encode(&count + 1)?).await?;
+                self.set(&count_key, &encoder::encode(&index + 1)?).await?;
+
+                // find index by item
+
+                self.set(&hash_key, &encode(index)?).await?;
 
                 Ok(())
             }

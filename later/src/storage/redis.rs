@@ -52,4 +52,13 @@ impl Storage for Redis {
             .await
             .map_err(anyhow::Error::from)
     }
+
+    async fn exist(&self, key: &str) -> anyhow::Result<bool> {
+        self.connection
+            .lock()
+            .await
+            .exists(key)
+            .await
+            .map_err(anyhow::Error::from)
+    }
 }
