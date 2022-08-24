@@ -70,7 +70,7 @@ async fn range_basic_2_items(storage: Box<dyn Storage>) {
         .await
         .unwrap();
 
-    let mut scan_result = storage.scan_range(&key).await;
+    let scan_result = storage.scan_range(&key).await;
     let count = scan_result.count().await;
 
     assert_eq!(2, count);
@@ -97,7 +97,7 @@ async fn range_basic_1_item(storage: Box<dyn Storage>) {
         .await
         .unwrap();
 
-    let mut scan_result = storage.scan_range(&key).await;
+    let scan_result = storage.scan_range(&key).await;
     let count = scan_result.count().await;
 
     assert_eq!(1, count);
@@ -141,7 +141,7 @@ async fn range_trim(storage: Box<dyn Storage>) {
     let _ = storage.trim(range).await;
 
     // should have only 50
-    let mut range = storage.scan_range(&key).await;
+    let range = storage.scan_range(&key).await;
     assert_eq!(50, range.count().await);
 
     // should be empty
@@ -293,6 +293,24 @@ async fn scan_del_second_item(storage: Box<dyn Storage>) {
     let mut range = storage.scan_range(&key).await; // start from beginning
     let remaining_items = read_all_string(&mut range, &storage).await;
     assert_eq!(remaining_items, &["item-1", "item-3", "item-4"]);
+}
+
+#[test_case(create_redis_client().await; "redis")]
+#[test_case(create_postgres_client().await; "postgres")]
+#[tokio::test]
+async fn range_duplicate_ignored(storage: Box<dyn Storage>) {
+    let key = format!("key-{}", crate::generate_id());
+
+    storage.push(&key, "Item-1".as_bytes()).await.unwrap();
+    storage.push(&key, "Item-1".as_bytes()).await.unwrap();
+    storage.push(&key, "Item-2".as_bytes()).await.unwrap();
+
+    let mut range = storage.scan_range(&key).await;
+    let all_items = read_all_string(&mut range, &storage).await;
+
+    assert_eq!(all_items, &["Item-1", "Item-2"]);
+
+    storage.del_range(&key).await.expect("del_range");
 }
 
 async fn read_all_string(

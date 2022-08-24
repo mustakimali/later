@@ -90,8 +90,10 @@ impl<T: Storage + ?Sized> StorageEx for T {
 
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
         let hash = encoder::hash(value);
-        let hash_key = format!("{}-{}", key, hash);
-        if self.exist(&hash_key).await? {
+        let index_by_hash_key = format!("{}-{}", key, hash);
+
+        if self.exist(&index_by_hash_key).await? {
+            // already exist
             return Ok(());
         }
 
@@ -102,21 +104,23 @@ impl<T: Storage + ?Sized> StorageEx for T {
             .unwrap_or_else(|| 0);
 
         let key = format!("{}-{}", key, index);
+        let hash_by_index_key = format!("{}-hash", key);
 
         match self.set(&key, value).await {
             Ok(_) => {
                 // store the count
                 self.set(&count_key, &encoder::encode(&index + 1)?).await?;
 
-                // find index by item
-
-                self.set(&hash_key, &encode(index)?).await?;
+                // find index by hash
+                self.set(&index_by_hash_key, &encode(index)?).await?;
+                self.set(&hash_by_index_key, &encode(hash)?).await?;
 
                 Ok(())
             }
             Err(e) => Err(e),
         }
     }
+
     async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
         let key = range.get_key();
         let start_key = format!("{}-start", key);
@@ -134,8 +138,9 @@ impl<T: Storage + ?Sized> StorageEx for T {
         };
 
         for i in start..end {
-            let key = get_scan_item_key(&key, i);
-            let _ = self.del(&key).await;
+            // let key = get_scan_item_key(&key, i);
+            // let _ = self.del(&key).await;
+            let _ = del_range_item(self, &key, i).await;
         }
 
         Ok(())
@@ -162,8 +167,7 @@ impl<T: Storage + ?Sized> StorageEx for T {
             .unwrap_or_else(|| 0);
 
         for idx in start_from_idx..item_in_range {
-            let item_key = get_scan_item_key(key, idx);
-            self.del(&item_key).await?;
+            let _ = del_range_item(self, key, idx).await;
         }
 
         // delete start + count
@@ -174,6 +178,27 @@ impl<T: Storage + ?Sized> StorageEx for T {
 
         Ok(())
     }
+}
+
+async fn del_range_item<T: Storage + ?Sized>(
+    storage: &T,
+    key: &str,
+    index: usize,
+) -> anyhow::Result<()> {
+    let key = get_scan_item_key(&key, index);
+    let _ = storage.del(&key).await;
+
+    let hash_key = &format!("{}-hash", key);
+    if let Some(hash_val) = storage.get(&hash_key).await {
+        if let Ok(hash_str) = String::from_utf8(hash_val) {
+            let index_by_hash_key = format!("{}-{}", key, hash_str);
+            let _ = storage.del(&index_by_hash_key).await;
+        }
+    }
+
+    let _ = storage.del(&hash_key).await;
+
+    Ok(())
 }
 
 async fn scan_range<T: Storage + ?Sized>(
