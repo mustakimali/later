@@ -37,6 +37,9 @@ pub trait StorageEx {
 
     /// Deletes an entire hashset with all items.
     async fn del_range(&self, key: &str) -> anyhow::Result<()>;
+
+    /// Deletes an item by the content
+    async fn del_range_item(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -47,7 +50,7 @@ pub trait StorageIter: Sync + Send {
     fn get_start(&self) -> usize;
     /// current pointer
     fn get_index(&self) -> usize;
-    /// end pointer
+    /// end poin&ter
     fn get_end(&self) -> usize;
 
     fn is_scanning_reverse(&self) -> bool;
@@ -89,36 +92,7 @@ impl<T: Storage + ?Sized> StorageEx for T {
     }
 
     async fn push(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
-        let hash = encoder::hash(value);
-        let index_by_hash_key = format!("{}-{}", key, hash);
-
-        if self.exist(&index_by_hash_key).await? {
-            // already exist
-            return Ok(());
-        }
-
-        let count_key = format!("{}-count", key);
-        let index = self
-            .get_of_type::<i32>(&count_key)
-            .await
-            .unwrap_or_else(|| 0);
-
-        let key = format!("{}-{}", key, index);
-        let hash_by_index_key = format!("{}-hash", key);
-
-        match self.set(&key, value).await {
-            Ok(_) => {
-                // store the count
-                self.set(&count_key, &encoder::encode(&index + 1)?).await?;
-
-                // find index by hash
-                self.set(&index_by_hash_key, &encode(index)?).await?;
-                self.set(&hash_by_index_key, &encode(hash)?).await?;
-
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
+        push_internal(self, key, value, None).await
     }
 
     async fn trim(&self, range: Box<dyn StorageIter>) -> anyhow::Result<()> {
@@ -178,6 +152,66 @@ impl<T: Storage + ?Sized> StorageEx for T {
 
         Ok(())
     }
+
+    async fn del_range_item(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+        // get the idx
+        let hash = encoder::hash(value);
+        let idx_by_hash_key = format!("{}-{}", key, hash);
+
+        if let Some(index) = self.get(&idx_by_hash_key).await {
+            let index = encoder::decode::<i32>(&index)?;
+            let _ = del_range_item(self, key, index as usize).await;
+        }
+
+        todo!()
+    }
+}
+
+async fn push_internal<T: Storage + ?Sized>(
+    storage: &T,
+    key: &str,
+    value: &[u8],
+    index: Option<i32>,
+) -> anyhow::Result<()> {
+    let hash = encoder::hash(value);
+    let index_by_hash_key = format!("{}-{}", key, hash);
+    let append_at_bottom = index.is_none();
+
+    if append_at_bottom && storage.exist(&index_by_hash_key).await? {
+        // already exist
+        return Ok(());
+    }
+
+    let count_key = format!("{}-count", key);
+    let index = if let Some(index) = index {
+        index
+    } else {
+        storage
+            .get_of_type::<i32>(&count_key)
+            .await
+            .unwrap_or_else(|| 0)
+    };
+
+    let key = format!("{}-{}", key, index);
+    let hash_by_index_key = format!("{}-hash", key);
+
+    match storage.set(&key, value).await {
+        Ok(_) => {
+            if append_at_bottom {
+                // store the count
+                storage
+                    .set(&count_key, &encoder::encode(&index + 1)?)
+                    .await?;
+            }
+
+            // find index by hash
+            storage.set(&index_by_hash_key, &encode(index)?).await?;
+            storage.set(&hash_by_index_key, &encode(hash)?).await?;
+
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 async fn del_range_item<T: Storage + ?Sized>(
@@ -185,12 +219,12 @@ async fn del_range_item<T: Storage + ?Sized>(
     key: &str,
     index: usize,
 ) -> anyhow::Result<()> {
-    let key = get_scan_item_key(&key, index);
-    let _ = storage.del(&key).await;
+    let item_key = get_scan_item_key(&key, index);
+    let _ = storage.del(&item_key).await;
 
-    let hash_key = &format!("{}-hash", key);
+    let hash_key = &format!("{}-hash", item_key);
     if let Some(hash_val) = storage.get(&hash_key).await {
-        if let Ok(hash_str) = String::from_utf8(hash_val) {
+        if let Ok(hash_str) = encoder::decode::<String>(&hash_val) {
             let index_by_hash_key = format!("{}-{}", key, hash_str);
             let _ = storage.del(&index_by_hash_key).await;
         }
@@ -288,11 +322,29 @@ impl StorageIter for ScanRange {
             return;
         }
 
+        // if let Ok(_) = del_range_item(storage.as_ref(), &self.key, self.index).await {
+        //     self.shift_one(&storage).await;
+        // }
+
+        let key_first_item = get_scan_item_key(&self.key, self.start);
+        if let Some(first_item) = storage.get(&key_first_item).await {
+            let _ = del_range_item(storage.as_ref(), &self.key, self.index).await;
+            let _ = push_internal(
+                storage.as_ref(),
+                &self.key,
+                &first_item,
+                Some(self.index as i32),
+            )
+            .await;
+            self.shift_one(&storage).await;
+        }
+
+        /*
         let key_first_item = get_scan_item_key(&self.key, self.start);
         if let Some(first_item) = storage.get(&key_first_item).await {
             let _ = storage.set(&key_to_be_deleted, &first_item).await;
             self.shift_one(&storage).await;
-        }
+        } */
     }
 
     async fn count(&self) -> usize {
