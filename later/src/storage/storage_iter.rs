@@ -30,6 +30,9 @@ pub trait StorageEx {
     /// Therefore the scan order won't be strictly maintained.
     async fn scan_range(&self, key: &str) -> Box<dyn StorageIter>;
 
+    /// Creates an iterator starting from the item with the given value
+    async fn scan_range_from(&self, key: &str, value: &[u8]) -> Option<Box<dyn StorageIter>>;
+
     /// Creates an iterator that read all items in reverse order (newest to oldest)
     ///
     /// See note in [`scan_range`].
@@ -37,9 +40,6 @@ pub trait StorageEx {
 
     /// Deletes an entire hashset with all items.
     async fn del_range(&self, key: &str) -> anyhow::Result<()>;
-
-    /// Deletes an item by the content
-    async fn del_range_item(&self, key: &str, value: &[u8]) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -81,6 +81,19 @@ pub(crate) struct ScanRange {
     exhausted: bool,
 }
 
+impl ScanRange {
+    fn from_range_with_index(range: Box<dyn StorageIter>, index: usize) -> ScanRange {
+        ScanRange {
+            end: range.get_end(),
+            start: range.get_start(),
+            scan_forward: !range.is_scanning_reverse(),
+            exhausted: false,
+            key: range.get_key(),
+            index,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl<T: Storage + ?Sized> StorageEx for T {
     async fn get_of_type<V: DeserializeOwned>(&self, key: &str) -> Option<V> {
@@ -112,8 +125,6 @@ impl<T: Storage + ?Sized> StorageEx for T {
         };
 
         for i in start..end {
-            // let key = get_scan_item_key(&key, i);
-            // let _ = self.del(&key).await;
             let _ = del_range_item(self, &key, i).await;
         }
 
@@ -153,17 +164,22 @@ impl<T: Storage + ?Sized> StorageEx for T {
         Ok(())
     }
 
-    async fn del_range_item(&self, key: &str, value: &[u8]) -> anyhow::Result<()> {
+    async fn scan_range_from(&self, key: &str, value: &[u8]) -> Option<Box<dyn StorageIter>> {
         // get the idx
         let hash = encoder::hash(value);
         let idx_by_hash_key = format!("{}-{}", key, hash);
 
         if let Some(index) = self.get(&idx_by_hash_key).await {
-            let index = encoder::decode::<i32>(&index)?;
-            let _ = del_range_item(self, key, index as usize).await;
+            if let Ok(index) = encoder::decode::<i32>(&index) {
+                let range = self.scan_range(key).await;
+                return Some(Box::new(ScanRange::from_range_with_index(
+                    range,
+                    index as usize,
+                )));
+            }
         }
 
-        todo!()
+        None
     }
 }
 
@@ -321,10 +337,6 @@ impl StorageIter for ScanRange {
             let _ = storage.del(&key_to_be_deleted).await;
             return;
         }
-
-        // if let Ok(_) = del_range_item(storage.as_ref(), &self.key, self.index).await {
-        //     self.shift_one(&storage).await;
-        // }
 
         let key_first_item = get_scan_item_key(&self.key, self.start);
         if let Some(first_item) = storage.get(&key_first_item).await {
