@@ -55,6 +55,9 @@ pub trait StorageIter: Sync + Send {
 
     fn is_scanning_reverse(&self) -> bool;
 
+    /// Skip some items
+    fn skip(&mut self, item: usize);
+
     /// return the next item if available.
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>>;
 
@@ -304,6 +307,14 @@ impl StorageIter for ScanRange {
         !self.scan_forward
     }
 
+    fn skip(&mut self, item: usize) {
+        self.index = if self.scan_forward {
+            self.index + item
+        } else {
+            self.index + item
+        };
+    }
+
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
         loop {
             if self.exhausted || self.scan_forward && (self.end == 0 || self.index >= self.end) {
@@ -331,10 +342,11 @@ impl StorageIter for ScanRange {
 
     async fn del(&mut self, storage: &Box<dyn Storage>) {
         let key_to_be_deleted = get_scan_item_key(&self.key, self.index);
+        println!("DEL {}", key_to_be_deleted);
 
         if self.index == self.start {
             self.shift_one(&storage).await;
-            let _ = storage.del(&key_to_be_deleted).await;
+            let _ = del_range_item(storage.as_ref(), &self.key, self.index).await;
             return;
         }
 
@@ -350,13 +362,6 @@ impl StorageIter for ScanRange {
             .await;
             self.shift_one(&storage).await;
         }
-
-        /*
-        let key_first_item = get_scan_item_key(&self.key, self.start);
-        if let Some(first_item) = storage.get(&key_first_item).await {
-            let _ = storage.set(&key_to_be_deleted, &first_item).await;
-            self.shift_one(&storage).await;
-        } */
     }
 
     async fn count(&self) -> usize {

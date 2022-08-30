@@ -1,62 +1,82 @@
 {
   "db": "PostgreSQL",
   "31e84262aabe8c1604c42096f4400393bbfb9712225ba0ad3dc30ff9b98c6f53": {
-    "query": "\n            INSERT INTO later_storage (key, value, update_count, date_created)\n            VALUES($1, $2, 0, $3) ON CONFLICT (key) DO UPDATE\n            SET value = $2, date_updated = $3, update_count = later_storage.update_count + 1, date_expire = null\n        ",
     "describe": {
       "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
           "Text",
           "Bytea",
           "Timestamptz"
         ]
-      },
-      "nullable": []
-    }
+      }
+    },
+    "query": "\n            INSERT INTO later_storage (key, value, update_count, date_created)\n            VALUES($1, $2, 0, $3) ON CONFLICT (key) DO UPDATE\n            SET value = $2, date_updated = $3, update_count = later_storage.update_count + 1, date_expire = null\n        "
   },
-  "93a8b383736c1b1fd97bf62c4d36718dfebd01d229da23f05c79157e5acc6b4e": {
-    "query": "SELECT value FROM later_storage WHERE key = $1 AND date_expire IS NULL",
+  "7060b3c119aaad6f5ad63b51eaf07af29042df7ef445a3f7f78d9ce2c1b6357b": {
     "describe": {
       "columns": [
         {
+          "name": "count",
           "ordinal": 0,
-          "name": "value",
-          "type_info": "Bytea"
+          "type_info": "Int8"
         }
+      ],
+      "nullable": [
+        null
       ],
       "parameters": {
         "Left": [
           "Text"
         ]
-      },
+      }
+    },
+    "query": "SELECT COUNT(*) as count FROM later_storage WHERE key = $1 AND date_expire IS NULL"
+  },
+  "93a8b383736c1b1fd97bf62c4d36718dfebd01d229da23f05c79157e5acc6b4e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "value",
+          "ordinal": 0,
+          "type_info": "Bytea"
+        }
+      ],
       "nullable": [
         false
-      ]
-    }
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT value FROM later_storage WHERE key = $1 AND date_expire IS NULL"
   },
   "95a63e593055657af4677d9d5f51d3ebd02a80ed9ffc51ce09036f965d948a3c": {
-    "query": "\n            UPDATE later_storage SET date_expire = $2 WHERE key = $1\n        ",
     "describe": {
       "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
           "Text",
           "Timestamptz"
         ]
-      },
-      "nullable": []
-    }
+      }
+    },
+    "query": "\n            UPDATE later_storage SET date_expire = $2 WHERE key = $1\n        "
   },
   "ad7ee0d2023ad90a685b8169049860f9dc72760aa5beb0fd19a4d2676315a9ae": {
-    "query": "\n            DELETE FROM later_storage WHERE key = $1\n        ",
     "describe": {
       "columns": [],
+      "nullable": [],
       "parameters": {
         "Left": [
           "Text"
         ]
-      },
-      "nullable": []
-    }
+      }
+    },
+    "query": "\n            DELETE FROM later_storage WHERE key = $1\n        "
   }
 }

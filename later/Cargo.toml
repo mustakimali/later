@@ -14,7 +14,7 @@ default = ["all"]
 all = ["postgres", "redis", "dashboard"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis"]
-dashboard = []
+dashboard = ["dep:serde-querystring", "dep:serde_json", "dep:thiserror"]
 
 [dependencies]
 # internal
@@ -47,6 +47,9 @@ tracing-opentelemetry = "0.17.4"
 
 sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
+serde-querystring = { optional = true, version = "0.0.8" }
+serde_json = { optional = true, version = "1.0" }
+thiserror = { optional = true, version = "1.0" }
 
 [dev-dependencies]
 test-case = "2.2.1"

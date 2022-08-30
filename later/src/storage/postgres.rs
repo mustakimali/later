@@ -17,6 +17,8 @@ impl Postgres {
 
         sqlx::migrate!("./migrations").run(&pool).await?;
 
+        // ToDo: background task to remove expired items
+
         Ok(Self { pool })
     }
 }
@@ -96,7 +98,7 @@ impl Storage for Postgres {
 
     async fn exist(&self, key: &str) -> anyhow::Result<bool> {
         let result = sqlx::query!(
-            r#"SELECT COUNT(*) as count FROM later_storage WHERE key = $1"#,
+            r#"SELECT COUNT(*) as count FROM later_storage WHERE key = $1 AND date_expire IS NULL"#,
             key
         )
         .fetch_one(&self.pool)

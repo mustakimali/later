@@ -8,6 +8,7 @@ use crate::{
     models::{Job, JobConfig, Stage},
     mq::{MqClient, MqConsumer, MqPayload, MqPublisher},
     persist::Persist,
+    storage::{Storage, StorageEx},
     BackgroundJobServerPublisher, JobId, RecurringJobId,
 };
 
@@ -55,6 +56,7 @@ pub(crate) trait EventsHandler: Sync + Send {
 
 pub struct Stats {
     publisher: Box<dyn MqPublisher>,
+    storage: Arc<Persist>,
 }
 
 impl Stats {
@@ -64,6 +66,7 @@ impl Stats {
         mq_client: &Box<dyn MqClient>,
     ) -> anyhow::Result<Self> {
         let routing_key = format!("{}-stats", main_routing_key);
+        let storage2 = storage.clone();
         let publisher = mq_client.new_publisher(&routing_key).await?;
         let mut consumer = mq_client.new_consumer(&routing_key, 6).await?;
         publisher.ensure_consumer().await?;
@@ -72,7 +75,10 @@ impl Stats {
             let _ = handle_stat_events(&mut consumer, storage).await;
         });
 
-        Ok(Self { publisher })
+        Ok(Self {
+            publisher,
+            storage: storage2,
+        })
     }
 }
 
@@ -145,10 +151,8 @@ async fn handle_stage(
     let job_id = job.id.clone();
     if let Some(old_stage) = old_stage {
         if old_stage != job.stage {
-            let old_stage = old_stage.get_name();
-            let old_stage_key = storage.get_id(IdOf::JobsInStage(old_stage.clone()));
-
-            // remove from old_stage_key hashset
+            // remove job from old stage
+            let _ = remove_job_id_from_list(&job_id, &old_stage, &storage).await;
         }
     }
 
@@ -157,6 +161,27 @@ async fn handle_stage(
 
     // add to new_stage_key hashset
     storage.push(new_stage_key, job_id).await?;
+
+    Ok(())
+}
+
+async fn remove_job_id_from_list(
+    id: &JobId,
+    stage: &Stage,
+    persist: &Persist,
+) -> anyhow::Result<()> {
+    let old_stage = stage.get_name();
+    let old_stage_key = persist.get_id(IdOf::JobsInStage(old_stage.clone()));
+
+    // remove from old_stage_key hashset
+    let id_encoded = encoder::encode(id.clone())?;
+    if let Some(mut range) = persist
+        .inner
+        .scan_range_from(&old_stage_key.to_string(), &id_encoded)
+        .await
+    {
+        range.del(&persist.inner).await;
+    }
 
     Ok(())
 }
@@ -202,5 +227,108 @@ impl Event {
     #[instrument(skip(p), name = "publish_stat_event")]
     pub(crate) async fn publish(self, p: &BackgroundJobServerPublisher) {
         p.stats.new_event(self).await
+    }
+}
+
+mod http {
+    const PAGE_SIZE: usize = 25;
+
+    use serde::de::DeserializeOwned;
+
+    use super::*;
+    use std::collections::HashMap;
+
+    #[macro_use]
+    macro_rules! hashmap {
+        ($(($k:literal, $v: literal)),+) => {
+            {
+                let mut hm = HashMap::new();
+                $(hm.insert($k.to_string(), $v.to_string());),+
+                hm
+            }
+        };
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub struct Request {
+        cmd: Command,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Command {
+        Index,
+        AllJobs { page: usize },
+        JobsInStage(String),
+    }
+
+    #[derive(serde::Serialize)]
+    pub struct Response {
+        status_code: u8,
+        headers: HashMap<String, String>,
+        body: String,
+    }
+
+    #[derive(thiserror::Error, Debug)]
+    pub enum ResponseError {
+        #[error("Internal server error {0:?}")]
+        InternalServer(#[from] anyhow::Error),
+
+        #[error("Bad request")]
+        ParseError(#[from] serde_querystring::Error),
+    }
+
+    impl Stats {
+        pub async fn handle_http(&self, query_string: String) -> Result<Response, ResponseError> {
+            match serde_querystring::from_str::<Command>(&query_string)? {
+                Command::Index => todo!(),
+                Command::AllJobs { page } => {
+                    let key = self.storage.get_id(IdOf::JobList);
+                    let items = scan_range::<JobId>(&self.storage.inner, key, page).await?;
+
+                    Ok(Response::json(items)?)
+                }
+                Command::JobsInStage(_) => todo!(),
+            }
+        }
+    }
+
+    async fn scan_range<T: DeserializeOwned>(
+        storage: &Box<dyn Storage>,
+        key: Id,
+        page: usize,
+    ) -> anyhow::Result<Vec<T>> {
+        let mut range = storage.scan_range(&key.to_string()).await;
+        range.skip(PAGE_SIZE * (page - 1));
+
+        let mut result = Vec::new();
+        for _ in 0..PAGE_SIZE {
+            if let Some(item) = range.next(storage).await {
+                result.push(encoder::decode::<T>(&item)?);
+            } else {
+                break;
+            }
+        }
+
+        Ok(result)
+    }
+
+    impl Response {
+        fn json<T: serde::Serialize>(json: T) -> anyhow::Result<Self> {
+            Ok(Self {
+                status_code: 200,
+                headers: hashmap!(("content-type", "application/json")),
+                body: serde_json::to_string(&json)?,
+            })
+        }
+
+        fn html(json: String) -> Self {
+            Self {
+                status_code: 200,
+                headers: hashmap!(("content-type", "text/html")),
+                body: json,
+            }
+        }
     }
 }

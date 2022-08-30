@@ -339,6 +339,28 @@ async fn scan_range_from(storage: Box<dyn Storage>) {
     assert_eq!(all_items, &["Item-1", "Item-3", "Item-4"]);
 }
 
+#[test_case(create_redis_client().await; "redis")]
+#[test_case(create_postgres_client().await; "postgres")]
+#[tokio::test]
+async fn scan_skip(storage: Box<dyn Storage>) {
+    let key = format!("key-{}", generate_id());
+
+    for i in 1..5 {
+        // creates item-1 ... item-4
+        storage
+            .push(&key, format!("Item-{}", i).as_bytes())
+            .await
+            .expect("push");
+    }
+
+    let mut range = storage.scan_range(&key).await;
+    range.skip(1);
+
+    let all_items = read_all_string(&mut range, &storage).await;
+
+    assert_eq!(all_items, &["Item-2", "Item-3", "Item-4"]);
+}
+
 async fn read_all_string(
     range: &mut Box<dyn StorageIter>,
     storage: &Box<dyn Storage>,
