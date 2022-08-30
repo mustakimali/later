@@ -198,7 +198,7 @@
 //! # }
 //! ```
 //!
-//! ## Recurring jobs
+//! ## Recurring jobsDashboardResponse
 //!
 //! Run recurring job based on cron schedule.
 //!
@@ -254,7 +254,7 @@ mod metrics;
 mod models;
 pub mod mq;
 mod persist;
-mod stats;
+pub mod stats;
 pub mod storage;
 
 pub type UtcDateTime = chrono::DateTime<chrono::Utc>;

@@ -784,6 +784,7 @@ dependencies = [
  "opentelemetry-jaeger",
  "rocket",
  "serde",
+ "serde-querystring",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

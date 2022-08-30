@@ -3,7 +3,10 @@ extern crate rocket;
 
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
-use rocket::State;
+use rocket::{
+    http::{uri::Query, ContentType},
+    Request, State,
+};
 use tracing::Instrument;
 
 mod bg {
@@ -107,6 +110,15 @@ async fn enqueue_num(num: usize, state: &State<AppContext>) -> String {
     ids.join(", ")
 }
 
+#[get("/dash?<query>")]
+async fn dashboard(state: &State<AppContext>, query: String) -> String {
+    if let Ok(res) = state.jobs.get_dashboard(query.to_string()).await {
+        return res.body;
+    }
+
+    "".to_string()
+}
+
 #[get("/metrics")]
 #[tracing::instrument(skip(state))]
 async fn metrics(state: &State<AppContext>) -> String {
@@ -165,6 +177,6 @@ async fn start() -> rocket::Rocket<rocket::Build> {
     let ctx = AppContext { jobs: bjs };
 
     rocket::build()
-        .mount("/", routes![hello, metrics, enqueue_num])
+        .mount("/", routes![hello, metrics, enqueue_num, dashboard])
         .manage(ctx)
 }

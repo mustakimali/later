@@ -1,12 +1,15 @@
-use crate::core::JobParameter;
-use crate::models::{AmqpCommand, Job, RecurringJob};
-use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
-use crate::mq::MqClient;
-use crate::persist::Persist;
-use crate::stats::{Event, EventsHandler, NoOpStats, Stats};
-use crate::storage::Storage;
-use crate::{encoder, RecurringJobId};
-use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
+use crate::{
+    core::JobParameter,
+    encoder, metrics,
+    models::{
+        AmqpCommand, DelayedStage, EnqueuedStage, Job, JobConfig, RecurringJob, Stage, WaitingStage,
+    },
+    mq::MqClient,
+    persist::Persist,
+    stats::{DashboardResponse, Event, EventsHandler, NoOpStats, ResponseError, Stats},
+    storage::Storage,
+    BackgroundJobServerPublisher, JobId, RecurringJobId, UtcDateTime,
+};
 use anyhow::Context;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -41,6 +44,14 @@ impl BackgroundJobServerPublisher {
             publisher,
             routing_key,
         })
+    }
+
+    #[cfg(feature = "dashboard")]
+    pub async fn get_dashboard(
+        &self,
+        query_string: String,
+    ) -> Result<DashboardResponse, ResponseError> {
+        self.stats.handle_http(query_string).await
     }
 
     /// Blocks until there is at least worker available.

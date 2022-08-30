@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use tracing::{info, instrument};
-
+pub use self::http::{DashboardResponse, ResponseError};
 use crate::{
     encoder,
     id::Id,
@@ -11,6 +8,10 @@ use crate::{
     storage::{Storage, StorageEx},
     BackgroundJobServerPublisher, JobId, RecurringJobId,
 };
+use std::sync::Arc;
+use tracing::{info, instrument};
+
+mod http;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct JobMeta {
@@ -52,6 +53,7 @@ enum IdOf {
 #[async_trait::async_trait]
 pub(crate) trait EventsHandler: Sync + Send {
     async fn new_event(&self, event: Event); // Infallible
+    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError>;
 }
 
 pub struct Stats {
@@ -199,7 +201,7 @@ impl Persist {
     }
 
     async fn del_by_meta_id(&self, id: Id) -> anyhow::Result<()> {
-        Ok(self.inner.del(&id.to_string()).await?)
+        Ok(self.inner.expire(&id.to_string(), 3600 * 24).await?)
     }
 }
 
@@ -210,6 +212,10 @@ impl EventsHandler for Stats {
             let _ = self.publisher.publish(&bytes).await;
         }
     }
+
+    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError> {
+        http::handle_http_raw(self.storage.clone(), query_string).await
+    }
 }
 
 pub struct NoOpStats;
@@ -219,6 +225,13 @@ impl EventsHandler for NoOpStats {
     async fn new_event(&self, _: Event) {
         ()
     }
+
+    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError> {
+        Ok(DashboardResponse::error(
+            400,
+            "feature 'dashboard' is not enabled",
+        ))
+    }
 }
 
 impl Persist {}
@@ -227,108 +240,5 @@ impl Event {
     #[instrument(skip(p), name = "publish_stat_event")]
     pub(crate) async fn publish(self, p: &BackgroundJobServerPublisher) {
         p.stats.new_event(self).await
-    }
-}
-
-mod http {
-    const PAGE_SIZE: usize = 25;
-
-    use serde::de::DeserializeOwned;
-
-    use super::*;
-    use std::collections::HashMap;
-
-    #[macro_use]
-    macro_rules! hashmap {
-        ($(($k:literal, $v: literal)),+) => {
-            {
-                let mut hm = HashMap::new();
-                $(hm.insert($k.to_string(), $v.to_string());),+
-                hm
-            }
-        };
-    }
-
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    pub struct Request {
-        cmd: Command,
-    }
-
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    pub enum Command {
-        Index,
-        AllJobs { page: usize },
-        JobsInStage(String),
-    }
-
-    #[derive(serde::Serialize)]
-    pub struct Response {
-        status_code: u8,
-        headers: HashMap<String, String>,
-        body: String,
-    }
-
-    #[derive(thiserror::Error, Debug)]
-    pub enum ResponseError {
-        #[error("Internal server error {0:?}")]
-        InternalServer(#[from] anyhow::Error),
-
-        #[error("Bad request")]
-        ParseError(#[from] serde_querystring::Error),
-    }
-
-    impl Stats {
-        pub async fn handle_http(&self, query_string: String) -> Result<Response, ResponseError> {
-            match serde_querystring::from_str::<Command>(&query_string)? {
-                Command::Index => todo!(),
-                Command::AllJobs { page } => {
-                    let key = self.storage.get_id(IdOf::JobList);
-                    let items = scan_range::<JobId>(&self.storage.inner, key, page).await?;
-
-                    Ok(Response::json(items)?)
-                }
-                Command::JobsInStage(_) => todo!(),
-            }
-        }
-    }
-
-    async fn scan_range<T: DeserializeOwned>(
-        storage: &Box<dyn Storage>,
-        key: Id,
-        page: usize,
-    ) -> anyhow::Result<Vec<T>> {
-        let mut range = storage.scan_range(&key.to_string()).await;
-        range.skip(PAGE_SIZE * (page - 1));
-
-        let mut result = Vec::new();
-        for _ in 0..PAGE_SIZE {
-            if let Some(item) = range.next(storage).await {
-                result.push(encoder::decode::<T>(&item)?);
-            } else {
-                break;
-            }
-        }
-
-        Ok(result)
-    }
-
-    impl Response {
-        fn json<T: serde::Serialize>(json: T) -> anyhow::Result<Self> {
-            Ok(Self {
-                status_code: 200,
-                headers: hashmap!(("content-type", "application/json")),
-                body: serde_json::to_string(&json)?,
-            })
-        }
-
-        fn html(json: String) -> Self {
-            Self {
-                status_code: 200,
-                headers: hashmap!(("content-type", "text/html")),
-                body: json,
-            }
-        }
     }
 }

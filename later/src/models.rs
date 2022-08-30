@@ -135,6 +135,18 @@ pub trait StageName {
     fn get_name() -> String;
 }
 
+impl StageName for EnqueuedStage {
+    fn get_name() -> String {
+        "enqueued".into()
+    }
+}
+
+impl StageName for RunningStage {
+    fn get_name() -> String {
+        "running".into()
+    }
+}
+
 impl StageName for DelayedStage {
     fn get_name() -> String {
         "delayed".into()
@@ -150,6 +162,18 @@ impl StageName for WaitingStage {
 impl StageName for RequeuedStage {
     fn get_name() -> String {
         "requeued".into()
+    }
+}
+
+impl StageName for SuccessStage {
+    fn get_name() -> String {
+        "success".into()
+    }
+}
+
+impl StageName for FailedStage {
+    fn get_name() -> String {
+        "success".into()
     }
 }
 
@@ -272,12 +296,24 @@ impl Stage {
         match self {
             Stage::Delayed(_) => DelayedStage::get_name(),
             Stage::Waiting(_) => WaitingStage::get_name(),
-            Stage::Enqueued(_) => "enqueued".into(),
-            Stage::Running(_) => "running".into(),
+            Stage::Enqueued(_) => EnqueuedStage::get_name(),
+            Stage::Running(_) => RunningStage::get_name(),
             Stage::Requeued(_) => RequeuedStage::get_name(),
-            Stage::Success(_) => "success".into(),
-            Stage::Failed(_) => "failed".into(),
+            Stage::Success(_) => SuccessStage::get_name(),
+            Stage::Failed(_) => FailedStage::get_name(),
         }
+    }
+
+    pub fn get_all_stage_names() -> Vec<String> {
+        vec![
+            DelayedStage::get_name(),
+            WaitingStage::get_name(),
+            EnqueuedStage::get_name(),
+            RunningStage::get_name(),
+            RequeuedStage::get_name(),
+            SuccessStage::get_name(),
+            FailedStage::get_name(),
+        ]
     }
 
     /// ## Before running
