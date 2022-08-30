@@ -4,7 +4,8 @@ extern crate rocket;
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
 use rocket::{
-    http::{uri::Query, ContentType},
+    http::{uri::Query, ContentType, Header, HeaderMap},
+    response::content::RawJson,
     Request, State,
 };
 use tracing::Instrument;
@@ -110,13 +111,23 @@ async fn enqueue_num(num: usize, state: &State<AppContext>) -> String {
     ids.join(", ")
 }
 
+#[derive(Responder)]
+enum DashResponse<'r> {
+    Body(String, Header<'r>, Header<'r>),
+    Status(rocket::http::Status),
+}
+
 #[get("/dash?<query>")]
-async fn dashboard(state: &State<AppContext>, query: String) -> String {
+async fn dashboard(state: &State<AppContext>, query: String) -> DashResponse {
     if let Ok(res) = state.jobs.get_dashboard(query.to_string()).await {
-        return res.body;
+        return DashResponse::Body(
+            res.body,
+            Header::new("access-control-allow-origin", "*"),
+            Header::new("content-type", "application/json"),
+        );
     }
 
-    "".to_string()
+    DashResponse::Status(rocket::http::Status::NotFound)
 }
 
 #[get("/metrics")]
