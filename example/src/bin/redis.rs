@@ -1,13 +1,8 @@
-#[macro_use]
-extern crate rocket;
-
+use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
-use rocket::{
-    http::{uri::Query, ContentType, Header, HeaderMap},
-    response::content::RawJson,
-    Request, State,
-};
+use serde_json::json;
+use std::sync::Arc;
 use tracing::Instrument;
 
 mod bg {
@@ -86,20 +81,20 @@ struct AppContext {
 
 #[get("/")]
 #[tracing::instrument(skip(state))]
-async fn hello(state: &State<AppContext>) -> String {
+async fn enqueue(state: actix_web::web::Data<Arc<AppContext>>) -> impl Responder {
     let id = later::generate_id();
     let msg = AnotherSampleMessage {
         txt: format!("{id}-1"),
     };
-    state.jobs.enqueue(msg).await.expect("Enqueue Job");
-    "Hello, world!".to_string()
+    let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
+    HttpResponse::Ok().json(json!({ "id": id }))
 }
 
-#[get("/<num>")]
+#[get("/{num}")]
 #[tracing::instrument(skip(state))]
-async fn enqueue_num(num: usize, state: &State<AppContext>) -> String {
+async fn enqueue_num(num: web::Path<usize>, state: web::Data<Arc<AppContext>>) -> impl Responder {
     let mut ids = Vec::new();
-    for i in 0..num {
+    for i in 0..*num {
         let id = later::generate_id();
         let msg = SampleMessage {
             txt: format!("{id}-{}", i),
@@ -108,36 +103,33 @@ async fn enqueue_num(num: usize, state: &State<AppContext>) -> String {
         ids.push(id.to_string());
     }
 
-    ids.join(", ")
+    HttpResponse::Ok().json(ids)
 }
 
-#[derive(Responder)]
-enum DashResponse<'r> {
-    Body(String, Header<'r>, Header<'r>),
-    Status(rocket::http::Status),
-}
-
-#[get("/dash?<query>")]
-async fn dashboard(state: &State<AppContext>, query: String) -> DashResponse {
+#[get("/dash?{query}")]
+async fn dashboard(state: web::Data<Arc<AppContext>>, query: web::Query<String>) -> impl Responder {
     if let Ok(res) = state.jobs.get_dashboard(query.to_string()).await {
-        return DashResponse::Body(
-            res.body,
-            Header::new("access-control-allow-origin", "*"),
-            Header::new("content-type", "application/json"),
-        );
+        let mut builder = HttpResponse::Ok();
+        builder.append_header(("access-control-allow-origin", "*"));
+
+        for (k, v) in res.headers {
+            builder.append_header((k, v));
+        }
+
+        return builder.body(res.body);
     }
 
-    DashResponse::Status(rocket::http::Status::NotFound)
+    HttpResponse::NotFound().finish()
 }
 
 #[get("/metrics")]
 #[tracing::instrument(skip(state))]
-async fn metrics(state: &State<AppContext>) -> String {
+async fn metrics(state: web::Data<AppContext>) -> String {
     state.jobs.get_metrics().expect("metrics")
 }
 
-#[launch]
-async fn rocket() -> rocket::Rocket<rocket::Build> {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Registry;
 
@@ -165,7 +157,11 @@ async fn rocket() -> rocket::Rocket<rocket::Build> {
         .await
 }
 
-async fn start() -> rocket::Rocket<rocket::Build> {
+async fn start() -> std::io::Result<()> {
+    let port = std::env::var("PORT")
+        .unwrap_or("8080".into())
+        .parse()
+        .unwrap_or(8080);
     let job_ctx = JobContext {};
     let storage = later::storage::Redis::new("redis://127.0.0.1/")
         .await
@@ -186,8 +182,17 @@ async fn start() -> rocket::Rocket<rocket::Build> {
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };
+    let ctx = Arc::new(ctx);
 
-    rocket::build()
-        .mount("/", routes![hello, metrics, enqueue_num, dashboard])
-        .manage(ctx)
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(ctx.clone()))
+            .service(enqueue)
+            .service(enqueue_num)
+            .service(dashboard)
+            .service(metrics)
+    })
+    .bind(("127.0.0.1", port))?
+    .run()
+    .await
 }
