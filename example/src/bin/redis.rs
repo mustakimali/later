@@ -159,9 +159,9 @@ async fn main() -> std::io::Result<()> {
 #[tracing::instrument]
 async fn start() -> std::io::Result<()> {
     let port = std::env::var("PORT")
-        .unwrap_or("8080".into())
+        .unwrap_or("8000".into())
         .parse()
-        .unwrap_or(8080);
+        .unwrap_or(8000);
     let job_ctx = JobContext {};
     let storage = later::storage::Redis::new("redis://127.0.0.1/")
         .await

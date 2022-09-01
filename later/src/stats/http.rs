@@ -1,10 +1,9 @@
 use super::*;
 use serde::de::DeserializeOwned;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 const PAGE_SIZE: usize = 25;
-
 
 macro_rules! hashmap {
     ($(($k:literal, $v: literal)),+) => {
@@ -62,7 +61,7 @@ async fn handle_http(
             let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;
 
             DashboardResponse::json(json!({
-                "result": items,
+                "result": populate_jobs(items, persist.clone()).await,
                 "paging": {
                     "page": page,
                     "total": (count as f64 / PAGE_SIZE as f64).ceil() as i64,
@@ -75,7 +74,7 @@ async fn handle_http(
             let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;
 
             DashboardResponse::json(json!({
-                "result": items,
+                "result": populate_jobs(items, persist.clone()).await,
                 "paging": {
                     "page": page,
                     "total": (count as f64 / PAGE_SIZE as f64).ceil() as i64,
@@ -111,12 +110,39 @@ async fn handle_http(
     Ok(dash_resp)
 }
 
+async fn populate_jobs(ids: Vec<JobId>, persist: Arc<Persist>) -> Vec<Value> {
+    let mut items = Vec::new();
+
+    for job_id in ids {
+        let meta_id = persist.get_id(IdOf::JobMeta(job_id.clone()));
+        let item = match persist
+            .inner
+            .get_of_type::<JobMeta>(&meta_id.to_string())
+            .await
+        {
+            Some(item) => {
+                json!({
+                    "id": item.id.clone(),
+                    "info": item
+                })
+            }
+            _ => json!({
+                "id": job_id,
+                "info": null
+            }),
+        };
+        items.push(item);
+    }
+
+    items
+}
+
 async fn scan_range<T: DeserializeOwned>(
     storage: &Box<dyn Storage>,
     key: Id,
     page: usize,
 ) -> anyhow::Result<(Vec<T>, usize)> {
-    let mut range = storage.scan_range(&key.to_string()).await;
+    let mut range = storage.scan_range_reverse(&key.to_string()).await;
     range.skip(PAGE_SIZE * (page - 1));
 
     let mut result = Vec::new();

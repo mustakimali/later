@@ -17,9 +17,44 @@
             <a class="navbar-brand" href="#">later</a>
         </div>
     </nav>
-
-    <div id="app">
-
+    <br/>
+    <div id="app" class="container">
+        <div class="row">
+            <div class="col-sm-2">
+                <ul class="list-group" v-for="(count, name) in stages">
+                    <li class="list-group-item">
+                        <a href="#" @click="loadStage(name)">
+                            {{name}}
+                            <span class="badge bg-secondary rounded-pill">{{count}}</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="col-sm-10">
+                <div class="alert alert-info" v-if="jobs.result.length == 0">
+                    Nothing to show here
+                </div>
+                <table class="table table-striped" v-if="jobs.result.length > 0">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Type</th>
+                            <th>Date</th>
+                            <th>Stage</th>
+                        </tr>
+                    </thead>
+                    <tr v-for="job in jobs.result">
+                        <td>
+                            <a href="#" @click="showJob(job)"><pre>{{job.id}}</pre></a>
+                        </td>
+                        <td>
+                            <code>{{job.info.payload_type}}</code>
+                        </td>
+                        <td>{{job.info.stage.date}}</td>
+                        <td>{{job.info.stage.type}}</td>
+                    </tr>
+                </table>
+            </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
@@ -33,12 +68,26 @@
         let app = new Vue({
             el: `#app`,
             data: {
-                stages: []
+                stages: [],
+                jobs: {
+                    result: []
+                },
+                page: 1,
             },
             methods: {
                 loadCounts: async function () {
                     let resp = await fetch(get_uri({ cmd: "count" }));
-                    console.log(resp);
+                    let json = await resp.json();
+
+                    this.stages = json.stages;
+                },
+                loadStage: async function(stage) {
+                    let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
+                    let json = await resp.json();
+                    this.jobs = json;
+                },
+                showJob: function(job) {
+
                 }
             },
             mounted: function () {
