@@ -1,6 +1,7 @@
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tracing::Instrument;
@@ -79,18 +80,7 @@ struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
-#[get("/")]
-#[tracing::instrument(skip(state))]
-async fn enqueue(state: actix_web::web::Data<Arc<AppContext>>) -> impl Responder {
-    let id = later::generate_id();
-    let msg = AnotherSampleMessage {
-        txt: format!("{id}-1"),
-    };
-    let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
-    HttpResponse::Ok().json(json!({ "id": id }))
-}
-
-#[get("/{num}")]
+#[get("/enqueue/{num}")]
 #[tracing::instrument(skip(state))]
 async fn enqueue_num(num: web::Path<usize>, state: web::Data<Arc<AppContext>>) -> impl Responder {
     let mut ids = Vec::new();
@@ -106,25 +96,34 @@ async fn enqueue_num(num: web::Path<usize>, state: web::Data<Arc<AppContext>>) -
     HttpResponse::Ok().json(ids)
 }
 
-#[get("/dash?{query}")]
-async fn dashboard(state: web::Data<Arc<AppContext>>, query: web::Query<String>) -> impl Responder {
-    if let Ok(res) = state.jobs.get_dashboard(query.to_string()).await {
-        let mut builder = HttpResponse::Ok();
-        builder.append_header(("access-control-allow-origin", "*"));
+#[derive(Debug, Deserialize)]
+pub struct DashQuery {
+    query: String,
+}
 
-        for (k, v) in res.headers {
-            builder.append_header((k, v));
+#[get("/dash")]
+async fn dashboard(
+    state: web::Data<Arc<AppContext>>,
+    query: web::Query<DashQuery>,
+) -> impl Responder {
+    match state.jobs.get_dashboard(query.query.clone()).await {
+        Ok(res) => {
+            let mut builder = HttpResponse::Ok();
+            builder.append_header(("access-control-allow-origin", "*"));
+
+            for (k, v) in res.headers {
+                builder.append_header((k, v));
+            }
+
+            return builder.body(res.body);
         }
-
-        return builder.body(res.body);
+        Err(e) => HttpResponse::NotFound().json(json!({ "error": format!("{}", e) })),
     }
-
-    HttpResponse::NotFound().finish()
 }
 
 #[get("/metrics")]
 #[tracing::instrument(skip(state))]
-async fn metrics(state: web::Data<AppContext>) -> String {
+async fn metrics(state: web::Data<Arc<AppContext>>) -> String {
     state.jobs.get_metrics().expect("metrics")
 }
 
@@ -187,10 +186,9 @@ async fn start() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(ctx.clone()))
-            .service(enqueue)
-            .service(enqueue_num)
             .service(dashboard)
             .service(metrics)
+            .service(enqueue_num)
     })
     .bind(("127.0.0.1", port))?
     .run()

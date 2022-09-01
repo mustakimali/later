@@ -1,0 +1,22 @@
+# enqueue n=2
+GET http://localhost:8080/enqueue/2
+
+###
+
+# get metrics
+GET http://localhost:8080/metrics
+
+###
+
+# dash get
+GET http://localhost:8080/dash?query={"cmd": "count"}
+
+###
+
+GET http://localhost:8080/dash?query={"cmd": "all_jobs" }
+###
+
+GET http://localhost:8080/dash?query={"cmd": "jobs_in_stage", "stage": "waiting"}
+
+###
+GET http://localhost:8080/dash?query={"cmd": "job", "id": "01gbqk5gf1ybe7y3qbapec4brv"}

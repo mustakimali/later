@@ -1,7 +1,7 @@
 const PAGE_SIZE: usize = 25;
 
 use super::*;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -39,7 +39,7 @@ pub enum ResponseError {
     #[error("Internal server error {0:?}")]
     InternalServer(#[from] anyhow::Error),
 
-    #[error("Bad request")]
+    #[error("Bad request: {0:?}")]
     ParseError(#[from] serde_json::Error),
 }
 
@@ -47,8 +47,8 @@ pub(crate) async fn handle_http_raw(
     persist: Arc<Persist>,
     query_string: String,
 ) -> Result<DashboardResponse, ResponseError> {
-    let cmd = serde_json::from_str::<DashboardCmd>(&dbg!(query_string))?;
-    handle_http(persist, dbg!(cmd)).await
+    let cmd = serde_json::from_str::<DashboardCmd>(&query_string)?;
+    handle_http(persist, cmd).await
 }
 
 async fn handle_http(
@@ -90,7 +90,7 @@ async fn handle_http(
                 let key = persist.get_id(IdOf::JobsInStage(stage2));
                 jobs_in_stages.insert(stage, scan_range_count(&persist.inner, key).await);
             }
-            DashboardResponse::json(json!({ "stages": jobs_in_stages }).to_string())?
+            DashboardResponse::json(json!({ "stages": jobs_in_stages }))?
         }
     };
 
