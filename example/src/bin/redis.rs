@@ -102,6 +102,7 @@ pub struct DashQuery {
 }
 
 #[get("/dash")]
+#[tracing::instrument(skip(state))]
 async fn dashboard(
     state: web::Data<Arc<AppContext>>,
     query: web::Query<DashQuery>,
@@ -109,7 +110,6 @@ async fn dashboard(
     match state.jobs.get_dashboard(query.query.clone()).await {
         Ok(res) => {
             let mut builder = HttpResponse::Ok();
-            builder.append_header(("access-control-allow-origin", "*"));
 
             for (k, v) in res.headers {
                 builder.append_header((k, v));
@@ -156,6 +156,7 @@ async fn main() -> std::io::Result<()> {
         .await
 }
 
+#[tracing::instrument]
 async fn start() -> std::io::Result<()> {
     let port = std::env::var("PORT")
         .unwrap_or("8080".into())

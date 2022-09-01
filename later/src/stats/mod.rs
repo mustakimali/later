@@ -9,7 +9,7 @@ use crate::{
     BackgroundJobServerPublisher, JobId, RecurringJobId,
 };
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::instrument;
 
 mod http;
 
@@ -226,7 +226,7 @@ impl EventsHandler for NoOpStats {
         ()
     }
 
-    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError> {
+    async fn handle_http(&self, _query_string: String) -> Result<DashboardResponse, ResponseError> {
         Ok(DashboardResponse::error(
             400,
             "feature 'dashboard' is not enabled",

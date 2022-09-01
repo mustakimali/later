@@ -2,7 +2,6 @@ use crate::{
     encoder::{self},
     id::{Id, IdOf},
     models::{DelayedStage, Job, RecurringJob, RequeuedStage, Stage, StageName},
-    stats::Event,
     storage::{Storage, StorageEx, StorageIter},
     JobId, RecurringJobId, UtcDateTime,
 };

@@ -342,7 +342,7 @@ impl StorageIter for ScanRange {
 
     async fn del(&mut self, storage: &Box<dyn Storage>) {
         let key_to_be_deleted = get_scan_item_key(&self.key, self.index);
-        println!("DEL {}", key_to_be_deleted);
+        tracing::debug!("Delete Key: {}", key_to_be_deleted);
 
         if self.index == self.start {
             self.shift_one(&storage).await;

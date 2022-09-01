@@ -1,16 +1,16 @@
-const PAGE_SIZE: usize = 25;
-
 use super::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 use serde_json::json;
 use std::collections::HashMap;
 
-#[macro_use]
+const PAGE_SIZE: usize = 25;
+
+
 macro_rules! hashmap {
     ($(($k:literal, $v: literal)),+) => {
         {
             let mut hm = HashMap::new();
-            $(hm.insert($k.to_string(), $v.to_string());),+
+            $(hm.insert($k.to_string(), $v.to_string());)+
             hm
         }
     };
@@ -59,15 +59,29 @@ async fn handle_http(
         DashboardCmd::Index => todo!(),
         DashboardCmd::AllJobs { page } => {
             let key = persist.get_id(IdOf::JobList);
-            let items = scan_range::<JobId>(&persist.inner, key, page).await?;
+            let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;
 
-            DashboardResponse::json(items)?
+            DashboardResponse::json(json!({
+                "result": items,
+                "paging": {
+                    "page": page,
+                    "total": (count as f64 / PAGE_SIZE as f64).ceil() as i64,
+                    "items": count,
+                }
+            }))?
         }
         DashboardCmd::JobsInStage { stage, page } => {
             let key = persist.get_id(IdOf::JobsInStage(stage));
-            let items = scan_range::<JobId>(&persist.inner, key, page).await?;
+            let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;
 
-            DashboardResponse::json(items)?
+            DashboardResponse::json(json!({
+                "result": items,
+                "paging": {
+                    "page": page,
+                    "total": (count as f64 / PAGE_SIZE as f64).ceil() as i64,
+                    "items": count,
+                }
+            }))?
         }
         DashboardCmd::Job { id } => {
             let meta_id = persist.get_id(IdOf::JobMeta(id));
@@ -101,7 +115,7 @@ async fn scan_range<T: DeserializeOwned>(
     storage: &Box<dyn Storage>,
     key: Id,
     page: usize,
-) -> anyhow::Result<Vec<T>> {
+) -> anyhow::Result<(Vec<T>, usize)> {
     let mut range = storage.scan_range(&key.to_string()).await;
     range.skip(PAGE_SIZE * (page - 1));
 
@@ -114,7 +128,7 @@ async fn scan_range<T: DeserializeOwned>(
         }
     }
 
-    Ok(result)
+    Ok((result, range.count().await))
 }
 
 async fn scan_range_count(storage: &Box<dyn Storage>, key: Id) -> usize {
@@ -127,7 +141,10 @@ impl DashboardResponse {
     pub fn json<T: serde::Serialize>(json: T) -> anyhow::Result<Self> {
         Ok(Self {
             status_code: 200,
-            headers: hashmap!(("content-type", "application/json")),
+            headers: hashmap!(
+                ("content-type", "application/json"),
+                ("access-control-allow-origin", "*")
+            ),
             body: serde_json::to_string(&json)?,
         })
     }
@@ -135,7 +152,10 @@ impl DashboardResponse {
     pub fn html(json: String) -> Self {
         Self {
             status_code: 200,
-            headers: hashmap!(("content-type", "text/html")),
+            headers: hashmap!(
+                ("content-type", "text/html"),
+                ("access-control-allow-origin", "*")
+            ),
             body: json,
         }
     }
@@ -143,7 +163,10 @@ impl DashboardResponse {
     pub fn error<S: Into<String>>(status_code: usize, error: S) -> Self {
         Self {
             status_code,
-            headers: hashmap!(("content-type", "application/json")),
+            headers: hashmap!(
+                ("content-type", "application/json"),
+                ("access-control-allow-origin", "*")
+            ),
             body: json!({ "error": error.into() }).to_string(),
         }
     }
