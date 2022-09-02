@@ -19,7 +19,6 @@ macro_rules! hashmap {
 #[serde(rename_all = "snake_case", tag = "cmd")]
 pub enum DashboardCmd {
     Index,
-    AllJobs { page: usize },
     JobsInStage { stage: String, page: usize },
     Count,
     Job { id: JobId },
@@ -55,20 +54,7 @@ async fn handle_http(
     cmd: DashboardCmd,
 ) -> Result<DashboardResponse, ResponseError> {
     let dash_resp = match cmd {
-        DashboardCmd::Index => todo!(),
-        DashboardCmd::AllJobs { page } => {
-            let key = persist.get_id(IdOf::JobList);
-            let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;
-
-            DashboardResponse::json(json!({
-                "result": populate_jobs(items, persist.clone()).await,
-                "paging": {
-                    "page": page,
-                    "total": (count as f64 / PAGE_SIZE as f64).ceil() as i64,
-                    "items": count,
-                }
-            }))?
-        }
+        DashboardCmd::Index => todo!(),  
         DashboardCmd::JobsInStage { stage, page } => {
             let key = persist.get_id(IdOf::JobsInStage(stage));
             let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;

@@ -45,7 +45,6 @@ pub(crate) enum Event {
 }
 
 enum IdOf {
-    JobList,
     JobsInStage(String),
     JobMeta(JobId),
 }
@@ -119,30 +118,17 @@ async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> a
                 }
             };
 
-            // save job list and job meta
+            // save job meta
             if is_new_job {
-                storage
-                    .push(storage.get_id(IdOf::JobList), job.id.clone())
-                    .await?;
                 // save first stage
                 handle_stage(storage, None, &job).await?;
             }
             storage.save(meta_id, job).await?;
         }
         Event::ExpireJob(job) => {
-            let job_id = job.id.clone();
             let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
-            // remove from all stages
-
-            // todo: remove from job-list
-            let job_list_id = storage.get_id(IdOf::JobList);
-            if let Some(mut entry_in_job_list) = storage
-                .inner
-                .scan_range_from(&job_list_id.to_string(), &encoder::encode(&job_id)?)
-                .await
-            {
-                entry_in_job_list.del(&storage.inner).await;
-            }
+            
+            // not removing from all stages as they will be periodically cleared
 
             storage.del_by_meta_id(meta_id).await?;
         }
@@ -197,7 +183,6 @@ async fn remove_job_id_from_list(
 impl Persist {
     fn get_id(&self, of: IdOf) -> Id {
         let id_str = match of {
-            IdOf::JobList => "job-list".to_string(),
             IdOf::JobsInStage(s) => format!("job-in-{}", s),
             IdOf::JobMeta(id) => format!("job-{}", id),
         };
