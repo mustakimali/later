@@ -9,6 +9,12 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    
+    <style>
+        .date {
+            cursor: pointer;
+        }
+    </style>
 </head>
 
 <body>
@@ -17,7 +23,7 @@
             <a class="navbar-brand" href="#">later</a>
         </div>
     </nav>
-    <br/>
+    <br />
     <div id="app" class="container">
         <div class="row">
             <div class="col-sm-2">
@@ -45,61 +51,105 @@
                     </thead>
                     <tr v-for="job in jobs.result">
                         <td>
-                            <a href="#" @click="showJob(job)"><pre>{{job.id}}</pre></a>
+                            <a href="#" @click="showJob(job)">
+                                <pre>{{job.id}}</pre>
+                            </a>
                         </td>
                         <td>
                             <code>{{job.info.payload_type}}</code>
                         </td>
-                        <td>{{job.info.stage.date}}</td>
+                        <td class="date">{{job.info.stage.date}}</td>
                         <td>{{job.info.stage.type}}</td>
                     </tr>
                 </table>
             </div>
-    </div>
+        </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
-        integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF"
-        crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vue@2.7.10/dist/vue.min.js"
-        integrity="sha256-rjpmUiJ6gyRPZ2rJkp3soGVAnXC0xotw7s61nf7BqMY=" crossorigin="anonymous"></script>
-    <script>
-        const BASE_APP = "http://localhost:8000/dash";
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
+            integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF"
+            crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue@2.7.10/dist/vue.min.js"
+            integrity="sha256-rjpmUiJ6gyRPZ2rJkp3soGVAnXC0xotw7s61nf7BqMY=" crossorigin="anonymous"></script>
+        <script>
+            const BASE_APP = "http://localhost:8000/dash";
 
-        let app = new Vue({
-            el: `#app`,
-            data: {
-                stages: [],
-                jobs: {
-                    result: []
+            let app = new Vue({
+                el: `#app`,
+                data: {
+                    stages: [],
+                    jobs: {
+                        result: []
+                    },
+                    page: 1,
                 },
-                page: 1,
-            },
-            methods: {
-                loadCounts: async function () {
-                    let resp = await fetch(get_uri({ cmd: "count" }));
-                    let json = await resp.json();
+                methods: {
+                    loadCounts: async function () {
+                        let resp = await fetch(get_uri({ cmd: "count" }));
+                        let json = await resp.json();
 
-                    this.stages = json.stages;
-                },
-                loadStage: async function(stage) {
-                    let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
-                    let json = await resp.json();
-                    this.jobs = json;
-                },
-                showJob: function(job) {
+                        this.stages = json.stages;
+                    },
+                    loadStage: async function (stage) {
+                        let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
+                        let json = await resp.json();
+                        this.jobs = json;
 
+                        this.updateTime();
+                    },
+                    updateTime: function() {
+                        setTimeout(update_time, 500);
+                    },
+                    showJob: function (job) {
+
+                    }
+                },
+                mounted: function () {
+                    this.loadCounts();
+
+                    setInterval(this.loadCounts, 5000);
+                    setInterval(this.updateTime, 5000);
                 }
-            },
-            mounted: function () {
-                this.loadCounts();
+
+            });
+
+            function get_uri(cmd) {
+                return `${BASE_APP}?query=${JSON.stringify(cmd)}`;
             }
 
-        });
+            function update_time() {
+                var items = document.querySelectorAll(".date");
+                items.forEach(item => {
+                    let input = item.getAttribute("value");
+                    if (input == null) {
+                        input = item.textContent;
+                        item.setAttribute("value", input);
+                        item.setAttribute("title", new Date(input).toString());
+                    }
 
-        function get_uri(cmd) {
-            return `${BASE_APP}?query=${JSON.stringify(cmd)}`;
-        }
-    </script>
+                    item.textContent = relative_time(new Date(input));
+                });
+            }
+
+            function relative_time(input) {
+                var units = {
+                    year: 24 * 60 * 60 * 1000 * 365,
+                    month: 24 * 60 * 60 * 1000 * 365 / 12,
+                    day: 24 * 60 * 60 * 1000,
+                    hour: 60 * 60 * 1000,
+                    minute: 60 * 1000,
+                    second: 1000
+                }
+
+                var rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+
+                var elapsed = input - new Date();
+
+                // "Math.abs" accounts for both "past" & "future" scenarios
+                for (var u in units)
+                    if (Math.abs(elapsed) > units[u] || u == 'second')
+                        return rtf.format(Math.round(elapsed / units[u]), u)
+            }
+        </script>
 </body>
 
 </html>
