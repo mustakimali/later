@@ -131,12 +131,18 @@ async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> a
         }
         Event::ExpireJob(job) => {
             let job_id = job.id.clone();
-            tracing::info!("STAT: Delete job {}", job_id);
             let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
             // remove from all stages
 
             // todo: remove from job-list
-            //storage.get_id(IdOf::JobList)
+            let job_list_id = storage.get_id(IdOf::JobList);
+            if let Some(mut entry_in_job_list) = storage
+                .inner
+                .scan_range_from(&job_list_id.to_string(), &encoder::encode(&job_id)?)
+                .await
+            {
+                entry_in_job_list.del(&storage.inner).await;
+            }
 
             storage.del_by_meta_id(meta_id).await?;
         }

@@ -19,6 +19,13 @@ mod bg {
     #[derive(Serialize, Deserialize, Debug)]
     pub struct SampleMessage {
         pub txt: String,
+        pub action: Action,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub enum Action {
+        Success,
+        Delay { delay_sec: u8 },
     }
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -37,6 +44,11 @@ async fn handle_sample_message(
 ) -> anyhow::Result<()> {
     tracing::info!("On Handle handle_sample_message: {:?}", payload);
 
+    if let Action::Delay { delay_sec } = payload.action {
+        tracing::info!("Delay for {} secs", delay_sec);
+        tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+    }
+
     Ok(())
 }
 
@@ -49,6 +61,7 @@ async fn handle_another_sample_message(
     let parent_job_id = _ctx
         .enqueue(SampleMessage {
             txt: format!("{}-1", prefix),
+            action: Action::Success,
         })
         .await?;
     let child_job_1_id = _ctx
@@ -56,6 +69,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-2", prefix),
+                action: Action::Success,
             },
         )
         .await?;
@@ -64,6 +78,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-3", prefix),
+                action: Action::Success,
             },
         )
         .await?;
@@ -80,14 +95,27 @@ struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EnqueueQuery {
+    delay_sec: Option<u8>,
+}
+
 #[get("/enqueue/{num}")]
 #[tracing::instrument(skip(state))]
-async fn enqueue_num(num: web::Path<usize>, state: web::Data<Arc<AppContext>>) -> impl Responder {
+async fn enqueue_num(
+    num: web::Path<usize>,
+    param: web::Query<EnqueueQuery>,
+    state: web::Data<Arc<AppContext>>,
+) -> impl Responder {
     let mut ids = Vec::new();
     for i in 0..*num {
         let id = later::generate_id();
         let msg = SampleMessage {
             txt: format!("{id}-{}", i),
+            action: match param.delay_sec {
+                Some(delay_sec) => Action::Delay { delay_sec },
+                None => Action::Success,
+            },
         };
         let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
         ids.push(id.to_string());

@@ -1,5 +1,9 @@
 # enqueue n=2
-GET http://localhost:8000/enqueue/200
+GET http://localhost:8000/enqueue/5000
+
+###
+
+GET http://localhost:8000/enqueue/5?delay_sec=10
 
 ###
 

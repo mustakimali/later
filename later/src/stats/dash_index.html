@@ -29,7 +29,7 @@
             <div class="col-sm-2">
                 <ul class="list-group" v-for="(count, name) in stages">
                     <li class="list-group-item">
-                        <a href="#" @click="loadStage(name)">
+                        <a href="#" @click="loadStage(name, count)">
                             {{name}}
                             <span class="badge bg-secondary rounded-pill">{{count}}</span>
                         </a>
@@ -58,7 +58,7 @@
                         <td>
                             <code>{{job.info.payload_type}}</code>
                         </td>
-                        <td class="date">{{job.info.stage.date}}</td>
+                        <td class="date" :value="job.info.stage.date"></td>
                         <td>{{job.info.stage.type}}</td>
                     </tr>
                 </table>
@@ -80,6 +80,10 @@
                     jobs: {
                         result: []
                     },
+                    selection: {
+                        stage: "",
+                        count: 0
+                    },
                     page: 1,
                 },
                 methods: {
@@ -88,13 +92,25 @@
                         let json = await resp.json();
 
                         this.stages = json.stages;
+
+                        // refresh job list when the total count changed.
+                        var countInCurrentStage = this.stages[this.selection.stage];
+                        if (countInCurrentStage != this.selection.count) {
+                            await this.loadStage(this.selection.stage, countInCurrentStage);
+                        }
                     },
-                    loadStage: async function (stage) {
+                    loadStage: async function (stage, count) {
+                        this.jobs.result = [];
+
                         let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
                         let json = await resp.json();
                         this.jobs = json;
 
                         this.updateTime();
+                        this.selection = {
+                            stage: stage,
+                            count: count
+                        };
                     },
                     updateTime: function() {
                         setTimeout(update_time, 500);
