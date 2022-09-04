@@ -14,6 +14,10 @@
         .date {
             cursor: pointer;
         }
+
+        .page-item[disabled] a {
+            background-color: #c8c8c8;
+        }
     </style>
 </head>
 
@@ -29,7 +33,7 @@
             <div class="col-sm-2">
                 <ul class="list-group" v-for="(count, name) in stages">
                     <li class="list-group-item">
-                        <a href="#" @click="loadStage(name, count)">
+                        <a href="#" @click="loadStageReset(name, count)">
                             {{name}}
                             <span class="badge bg-secondary rounded-pill">{{count}}</span>
                         </a>
@@ -56,16 +60,38 @@
                             </a>
                         </td>
                         <td>
-                            <code>{{job.info.payload_type}}</code>
+                            <code v-if="job.info">{{job.info.payload_type}}</code>
+                            <span v-if="job.info == null" class="text-secondary">(deleted)</span>
                         </td>
-                        <td class="date" :value="job.info.stage.date"></td>
                         <td>
-                            <span v-if="job.info.stage.type != selection.stage">
-                                {{job.info.stage.type}}
-                            </span>
+                            <span class="date" v-if="job.info" :value="job.info.stage.date"></span>
+                        </td>
+                        <td>
+                            <span v-if="job.info">{{job.info.stage.type}}</span>
                         </td>
                     </tr>
                 </table>
+                <ul class="pagination" v-if="jobs.paging != null && jobs.paging.total > 0">
+                    <li class="page-item" :disabled="page <= 1" @click.prevent="changePage({index: page - 1})">
+                        <a class="page-link" href="#" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+
+
+                    <li :class="{'page-item': true, active: page.active}" v-for="page in getPages(jobs.paging)">
+                        <a class="page-link" href="#" @click.prevent="changePage(page)">
+                            {{page.index}}
+                        </a>
+                    </li>
+
+                    <li class="page-item" :disabled="page >= jobs.paging.total">
+                        <a class="page-link" href="#" aria-label="Next" @click.prevent="changePage({index: page + 1})">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+
+                </ul>
             </div>
         </div>
 
@@ -82,7 +108,8 @@
                 data: {
                     stages: [],
                     jobs: {
-                        result: []
+                        result: [],
+                        paging: null,
                     },
                     selection: {
                         stage: "",
@@ -103,9 +130,16 @@
                             await this.loadStage(this.selection.stage, countInCurrentStage);
                         }
                     },
+                    loadStageReset: async function (stage, count) {
+                        this.page = 1;
+                        await this.loadStage(stage, count);
+                    },
                     loadStage: async function (stage, count) {
                         if (this.selection.stage != stage) {
-                            this.jobs.result = [];
+                            this.jobs = {
+                                result: [],
+                                paging: null
+                            };
                         }
 
                         let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
@@ -117,6 +151,10 @@
                             stage: stage,
                             count: count
                         };
+                    },
+                    changePage: async function (page) {
+                        this.page = page.index;
+                        await this.loadStage(this.selection.stage, this.selection.count);
                     },
                     updateTime: function () {
                         setTimeout(update_time, 500);
@@ -136,6 +174,19 @@
 
             function get_uri(cmd) {
                 return `${BASE_APP}?query=${JSON.stringify(cmd)}`;
+            }
+
+            function getPages(paging) {
+                var start = Math.max(paging.page - 10, 1);
+                var end = Math.max(Math.min(paging.total, paging.page + 10), Math.min(20, paging.total));
+                
+                var result = [];
+                if (paging != null) {
+                    for (var i = start; i <= end; i++) {
+                        result.push({ index: i, active: i == paging.page });
+                    }
+                }
+                return result;
             }
 
             function update_time() {

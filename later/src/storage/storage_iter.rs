@@ -311,7 +311,7 @@ impl StorageIter for ScanRange {
         self.index = if self.scan_forward {
             self.index + item
         } else {
-            self.index + item
+            self.index.checked_sub(item).unwrap_or_else(|| 0)
         };
     }
 
