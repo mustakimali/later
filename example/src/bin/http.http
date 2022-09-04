@@ -1,5 +1,5 @@
 # enqueue n=2
-GET http://localhost:8000/enqueue/50
+GET http://localhost:8000/enqueue/1
 
 ###
 

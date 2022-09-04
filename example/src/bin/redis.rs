@@ -110,12 +110,8 @@ async fn enqueue_num(
     let mut ids = Vec::new();
     for i in 0..*num {
         let id = later::generate_id();
-        let msg = SampleMessage {
+        let msg = AnotherSampleMessage {
             txt: format!("{id}-{}", i),
-            action: match param.delay_sec {
-                Some(delay_sec) => Action::Delay { delay_sec },
-                None => Action::Success,
-            },
         };
         let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
         ids.push(id.to_string());
