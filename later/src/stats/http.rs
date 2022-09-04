@@ -54,7 +54,7 @@ async fn handle_http(
     cmd: DashboardCmd,
 ) -> Result<DashboardResponse, ResponseError> {
     let dash_resp = match cmd {
-        DashboardCmd::Index => todo!(),  
+        DashboardCmd::Index => todo!(),
         DashboardCmd::JobsInStage { stage, page } => {
             let key = persist.get_id(IdOf::JobsInStage(stage));
             let (items, count) = scan_range::<JobId>(&persist.inner, key, page).await?;

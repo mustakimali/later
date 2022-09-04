@@ -1,5 +1,5 @@
 # enqueue n=2
-GET http://localhost:8000/enqueue/5
+GET http://localhost:8000/enqueue/50
 
 ###
 
@@ -8,8 +8,8 @@ GET http://localhost:8000/enqueue/500?delay_sec=1
 ###
 
 # get metrics
-  GET http://localhost:8000/metrics
-           
+GET http://localhost:8000/metrics
+
 ###
 
 # dash get

@@ -352,4 +352,25 @@ mod macro_generated {
             &self.ctx.job
         }
     }
+
+    impl<C> DeriveHandler<C>
+    where
+        C: Sync + Send + 'static,
+    {
+        #[allow(dead_code)]
+        fn to_json(ptype: String, payload: &[u8]) -> anyhow::Result<String> {
+            use later::core::JobParameter;
+            match ptype.as_str() {
+                "sample_message" => {
+                    let payload = super::SampleMessage::from_bytes(payload);
+                    ::serde_json::to_string_pretty(&payload).map_err(anyhow::Error::from)
+                }
+                "another_sample_message" => {
+                    let payload = super::AnotherSampleMessage::from_bytes(payload);
+                    ::serde_json::to_string_pretty(&payload).map_err(anyhow::Error::from)
+                }
+                _ => Err(anyhow::anyhow!("Unsupported ptype")),
+            }
+        }
+    }
 }

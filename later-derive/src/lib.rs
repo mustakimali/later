@@ -62,7 +62,8 @@ impl ToTokens for TraitImpl {
             .cloned()
             .map(|req| FieldItem::new(req, &inner_type_name, OutputType::Assignment));
 
-        let match_items = self.requests.iter().cloned().map(MatchArm);
+        let dispatch_arms = self.requests.iter().cloned().map(MatchArm);
+        let to_json_arms = self.requests.iter().cloned().map(ToJsonArm);
 
         let builder_type_name = format_ident!("{}Builder", name);
 
@@ -181,9 +182,9 @@ impl ToTokens for TraitImpl {
 
                     match ptype.as_str() {
 
-                        #(#match_items)*
+                        #(#dispatch_arms)*
 
-                        _ => unreachable!()
+                        _ => Err(anyhow::anyhow!("Unsupported ptype")),
                     }
                 }
 
@@ -202,6 +203,21 @@ impl ToTokens for TraitImpl {
             {
                 pub ctx: std::sync::Arc<#inner_type_name<C>>,
                 #(#public_fields)*
+            }
+
+            impl<C> #name<C>
+            where
+                C: Sync + Send + 'static,
+            {
+                fn to_json(&self, ptype: String, payload: &[u8]) -> anyhow::Result<String> {
+                    use ::later::core::JobParameter;
+
+                    match ptype.as_str() {
+                        #(#to_json_arms)*
+
+                        _ => Err(anyhow::anyhow!("Unsupported ptype")),
+                    }
+                }
             }
 
             #(#impl_message)*
@@ -344,6 +360,22 @@ impl ToTokens for MatchArm {
                 } else {
                     unimplemented!("")
                 }
+            },
+        })
+    }
+}
+
+struct ToJsonArm(Request);
+impl ToTokens for ToJsonArm {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let sig = &self.0;
+        let name = &sig.name;
+        let type_name = &sig.input;
+
+        tokens.extend(quote! {
+            stringify!(#name) => {
+                let payload = #type_name::from_bytes(payload);
+                ::serde_json::to_string_pretty(&payload).map_err(anyhow::Error::from)
             },
         })
     }
