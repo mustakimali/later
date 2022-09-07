@@ -26,4 +26,28 @@ pub trait Storage: Sync + Send {
     async fn exist(&self, key: &str) -> anyhow::Result<bool>;
 
     async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()>;
+
+    async fn lock(&self, key: &str) -> anyhow::Result<LockHandle>;
+}
+
+pub struct LockHandle {
+    inner: Box<dyn LockHandler>,
+}
+
+impl LockHandle {
+    pub fn new<H: LockHandler + 'static>(handler: H) -> Self {
+        Self {
+            inner: Box::new(handler),
+        }
+    }
+}
+
+pub trait LockHandler {
+    fn release(&mut self);
+}
+
+impl Drop for LockHandle {
+    fn drop(&mut self) {
+        self.inner.release();
+    }
 }

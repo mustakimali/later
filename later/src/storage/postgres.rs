@@ -1,4 +1,4 @@
-use super::Storage;
+use super::{LockHandle, Storage};
 use sqlx::{postgres::PgPoolOptions, Pool};
 
 pub struct Postgres {
@@ -105,5 +105,9 @@ impl Storage for Postgres {
         .await?;
 
         Ok(result.count.unwrap_or(0) > 0)
+    }
+
+    async fn lock(&self, key: &str) -> anyhow::Result<LockHandle> {
+        todo!()
     }
 }

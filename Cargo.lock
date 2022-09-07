@@ -1615,6 +1615,7 @@ dependencies = [
  "opentelemetry",
  "prometheus",
  "redis",
+ "relock",
  "rmp-serde",
  "rusty_ulid",
  "serde",
@@ -2297,6 +2298,18 @@ name = "regex-syntax"
 version = "0.6.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
+
+[[package]]
+name = "relock"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c61acbbb00264f44de66559baf6c25cc2f33fab49c97c8b977c600396fbf2731"
+dependencies = [
+ "rand",
+ "redis",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "remove_dir_all"
