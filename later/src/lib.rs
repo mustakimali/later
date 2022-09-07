@@ -293,7 +293,7 @@ pub struct BackgroundJobServerPublisher {
 }
 
 pub fn generate_id() -> String {
-    rusty_ulid::generate_ulid_string().to_lowercase()
+    rusty_ulid::generate_ulid_string()
 }
 
 #[derive(TypedBuilder)]

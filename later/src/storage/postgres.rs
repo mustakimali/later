@@ -1,3 +1,5 @@
+use crate::encoder;
+
 use super::{LockHandle, Storage};
 use sqlx::{postgres::PgPoolOptions, Pool};
 
@@ -109,5 +111,19 @@ impl Storage for Postgres {
 
     async fn lock(&self, key: &str) -> anyhow::Result<LockHandle> {
         todo!()
+    }
+
+    async fn atomic_incr(&self, key: &str, delta: usize) -> anyhow::Result<usize> {
+        let count = self
+            .get(key)
+            .await
+            .unwrap_or_else(|| encoder::encode(0).unwrap());
+        let count = encoder::decode::<usize>(&count)?;
+        if delta > 0 {
+            self.set(key, &encoder::encode(count + delta)?).await?;
+            Ok(count + delta)
+        } else {
+            Ok(count)
+        }
     }
 }

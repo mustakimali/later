@@ -149,10 +149,9 @@ impl<T: Storage + ?Sized> StorageEx for T {
             .get_of_type::<usize>(&start_key)
             .await
             .unwrap_or_else(|| 0);
-        let item_in_range = self
-            .get_of_type::<usize>(&count_key)
+        let item_in_range = get_count_of_atomic_key(self, &count_key)
             .await
-            .unwrap_or_else(|| 0);
+            .unwrap_or_else(|_| 0);
 
         for idx in start_from_idx..item_in_range {
             let _ = del_range_item(self, key, idx).await;
@@ -185,6 +184,40 @@ impl<T: Storage + ?Sized> StorageEx for T {
         None
     }
 }
+async fn extend_hashset_get_index<T: Storage + ?Sized>(
+    storage: &T,
+    key: &str,
+) -> anyhow::Result<i32> {
+    let count_key = format!("{}-count", key);
+    let index = storage.atomic_incr(&count_key, 1).await?;
+
+    Ok(index as i32)
+}
+
+async fn get_count_of_atomic_key<T: Storage + ?Sized>(
+    storage: &T,
+    key: &str,
+) -> anyhow::Result<usize> {
+    storage.atomic_incr(key, 0).await
+}
+
+// async fn extend_hashset_get_index_lock<T: Storage + ?Sized>(
+//     storage: &T,
+//     key: &str,
+// ) -> anyhow::Result<i32> {
+//     let _lock = storage.lock(key).await.expect("acquire lock");
+
+//     let count_key = format!("{}-count", key);
+//     let index = storage
+//         .get_of_type::<i32>(&count_key)
+//         .await
+//         .unwrap_or_else(|| 0);
+//     storage
+//         .set(&count_key, &encoder::encode(&index + 1)?)
+//         .await?;
+
+//     Ok(index)
+// }
 
 async fn push_internal<T: Storage + ?Sized>(
     storage: &T,
@@ -201,14 +234,10 @@ async fn push_internal<T: Storage + ?Sized>(
         return Ok(());
     }
 
-    let count_key = format!("{}-count", key);
     let index = if let Some(index) = index {
         index
     } else {
-        storage
-            .get_of_type::<i32>(&count_key)
-            .await
-            .unwrap_or_else(|| 0)
+        extend_hashset_get_index(storage, key).await?
     };
 
     let key = format!("{}-{}", key, index);
@@ -216,20 +245,16 @@ async fn push_internal<T: Storage + ?Sized>(
 
     match storage.set(&key, value).await {
         Ok(_) => {
-            if append_at_bottom {
-                // store the count
-                storage
-                    .set(&count_key, &encoder::encode(&index + 1)?)
-                    .await?;
-            }
-
             // find index by hash
             storage.set(&index_by_hash_key, &encode(index)?).await?;
             storage.set(&hash_by_index_key, &encode(hash)?).await?;
 
             Ok(())
         }
-        Err(e) => Err(e),
+        Err(e) => {
+            // the range has been extended already, acceptable tradeoff
+            Err(e)
+        }
     }
 }
 
@@ -265,10 +290,9 @@ async fn scan_range<T: Storage + ?Sized>(
         .get_of_type::<usize>(&start_key)
         .await
         .unwrap_or_else(|| 0);
-    let item_in_range = storage
-        .get_of_type::<usize>(&count_key)
+    let item_in_range = get_count_of_atomic_key(storage, &count_key)
         .await
-        .unwrap_or_else(|| 0);
+        .unwrap_or_else(|_| 0);
 
     let scan = ScanRange {
         key: key.to_string(),

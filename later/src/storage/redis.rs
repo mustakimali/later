@@ -69,12 +69,27 @@ impl Storage for Redis {
 
     async fn lock(&self, key: &str) -> anyhow::Result<LockHandle> {
         let ttl = 10_000;
-        let retry_count = 5;
-        let retry_delay = 200;
+        let retry_count = ttl as u32;
+        let retry_delay = 10;
+        let key = format!("lock-{}", key);
 
-        let lock = self.relock.lock(key, ttl, retry_count, retry_delay).await?;
-        let lock = ReLockHandle(lock, self.relock.clone(), key.to_string());
+        let lock = self
+            .relock
+            .lock(key.clone(), ttl, retry_count, retry_delay)
+            .await?;
+        let lock = ReLockHandle(lock, self.relock.clone(), key);
         Ok(LockHandle::new(lock))
+    }
+
+    async fn atomic_incr(&self, key: &str, delta: usize) -> anyhow::Result<usize> {
+        let value = self
+            .connection
+            .lock()
+            .await
+            .incr::<_, _, usize>(key, delta)
+            .await?;
+
+        Ok(value)
     }
 }
 

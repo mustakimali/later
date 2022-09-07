@@ -104,6 +104,8 @@ async fn handle_stat_events(
 async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> anyhow::Result<()> {
     let event = encoder::decode::<Event>(&payload.data())?;
 
+    tracing::info!(?event, "Stat Event");
+
     match event {
         Event::SaveJob(job) => {
             let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
@@ -127,7 +129,7 @@ async fn handle_event(payload: &Box<dyn MqPayload>, storage: &Arc<Persist>) -> a
         }
         Event::ExpireJob(job) => {
             let meta_id = storage.get_id(IdOf::JobMeta(job.id.clone()));
-            
+
             // not removing from all stages as they will be periodically cleared
 
             storage.del_by_meta_id(meta_id).await?;

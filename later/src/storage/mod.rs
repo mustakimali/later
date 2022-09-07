@@ -28,14 +28,15 @@ pub trait Storage: Sync + Send {
     async fn expire(&self, key: &str, ttl_sec: usize) -> anyhow::Result<()>;
 
     async fn lock(&self, key: &str) -> anyhow::Result<LockHandle>;
+    async fn atomic_incr(&self, key: &str, delta: usize) -> anyhow::Result<usize>;
 }
 
 pub struct LockHandle {
-    inner: Box<dyn LockHandler>,
+    inner: Box<dyn LockHandler + Send + Sync>,
 }
 
 impl LockHandle {
-    pub fn new<H: LockHandler + 'static>(handler: H) -> Self {
+    pub fn new<H: LockHandler + Send + Sync + 'static>(handler: H) -> Self {
         Self {
             inner: Box::new(handler),
         }
