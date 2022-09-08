@@ -123,11 +123,12 @@ impl<T: Storage + ?Sized> StorageEx for T {
         self.set(&start_key, &encoder::encode(idx)?).await?;
 
         let (start, end) = match range.is_scanning_reverse() {
-            true => (range.get_index() + 1, range.get_end()),
+            true => (range.get_index() + 1, range.get_end() + 1),
             false => (range.get_start(), range.get_index()),
         };
 
         for i in start..end {
+            println!("DEL {}-{}", key, i);
             let _ = del_range_item(self, &key, i).await;
         }
 
@@ -371,7 +372,7 @@ impl StorageIter for ScanRange {
     }
 
     async fn count(&self) -> usize {
-        (self.end - self.start) + 1
+        (self.end + 1) - self.start
     }
 }
 
