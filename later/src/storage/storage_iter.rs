@@ -201,24 +201,6 @@ async fn get_count_of_atomic_key<T: Storage + ?Sized>(
     storage.atomic_incr(key, 0).await
 }
 
-// async fn extend_hashset_get_index_lock<T: Storage + ?Sized>(
-//     storage: &T,
-//     key: &str,
-// ) -> anyhow::Result<i32> {
-//     let _lock = storage.lock(key).await.expect("acquire lock");
-
-//     let count_key = format!("{}-count", key);
-//     let index = storage
-//         .get_of_type::<i32>(&count_key)
-//         .await
-//         .unwrap_or_else(|| 0);
-//     storage
-//         .set(&count_key, &encoder::encode(&index + 1)?)
-//         .await?;
-
-//     Ok(index)
-// }
-
 async fn push_internal<T: Storage + ?Sized>(
     storage: &T,
     key: &str,
@@ -289,7 +271,7 @@ async fn scan_range<T: Storage + ?Sized>(
     let start_from_idx = storage
         .get_of_type::<usize>(&start_key)
         .await
-        .unwrap_or_else(|| 0);
+        .unwrap_or_else(|| 1);
     let item_in_range = get_count_of_atomic_key(storage, &count_key)
         .await
         .unwrap_or_else(|_| 0);
@@ -341,7 +323,7 @@ impl StorageIter for ScanRange {
 
     async fn next(&mut self, storage: &Box<dyn Storage>) -> Option<Vec<u8>> {
         loop {
-            if self.exhausted || self.scan_forward && (self.end == 0 || self.index >= self.end) {
+            if self.exhausted || self.scan_forward && (self.end == 0 || self.index > self.end) {
                 return None;
             }
 
@@ -389,7 +371,7 @@ impl StorageIter for ScanRange {
     }
 
     async fn count(&self) -> usize {
-        self.end - self.start
+        (self.end - self.start) + 1
     }
 }
 
