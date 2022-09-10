@@ -22,15 +22,17 @@ mod bg {
         pub action: Action,
     }
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub enum Action {
         Success,
         Delay { delay_sec: u8 },
+        Failed,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     pub struct AnotherSampleMessage {
         pub txt: String,
+        pub action: Action,
     }
 
     #[derive(Clone)]
@@ -44,9 +46,13 @@ async fn handle_sample_message(
 ) -> anyhow::Result<()> {
     tracing::info!("On Handle handle_sample_message: {:?}", payload);
 
-    if let Action::Delay { delay_sec } = payload.action {
-        tracing::info!("Delay for {} secs", delay_sec);
-        tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+    match payload.action {
+        Action::Delay { delay_sec } => {
+            tracing::info!("Delay for {} secs", delay_sec);
+            tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+        }
+        Action::Failed => return Err(anyhow::anyhow!("Simulated failure")),
+        _ => (),
     }
 
     Ok(())
@@ -57,11 +63,16 @@ async fn handle_another_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
+    if let Action::Delay { delay_sec } = payload.action {
+        tracing::info!("Delay for {} secs", delay_sec);
+        tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+    }
+
     let prefix = format!("{}-cont", payload.txt);
     let parent_job_id = _ctx
         .enqueue(SampleMessage {
             txt: format!("{}-1", prefix),
-            action: Action::Success,
+            action: payload.action.clone(),
         })
         .await?;
     let child_job_1_id = _ctx
@@ -69,7 +80,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-2", prefix),
-                action: Action::Success,
+                action: payload.action.clone(),
             },
         )
         .await?;
@@ -78,7 +89,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-3", prefix),
-                action: Action::Success,
+                action: Action::Failed,
             },
         )
         .await?;
@@ -112,6 +123,10 @@ async fn enqueue_num(
         let id = later::generate_id();
         let msg = AnotherSampleMessage {
             txt: format!("{id}-{}", i),
+            action: match param.delay_sec {
+                Some(delay_sec) => Action::Delay { delay_sec },
+                None => Action::Success,
+            },
         };
         let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
         ids.push(id.to_string());

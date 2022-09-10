@@ -6,6 +6,8 @@ pub mod redis;
 
 pub(crate) mod storage_iter;
 
+use std::collections::HashSet;
+
 #[cfg(feature = "postgres")]
 pub use crate::storage::postgres::Postgres;
 
