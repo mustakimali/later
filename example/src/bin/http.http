@@ -1,5 +1,5 @@
 # enqueue n=2
-GET http://localhost:8000/enqueue/10000
+GET http://localhost:8000/enqueue/10
 
 ###
 
@@ -23,4 +23,4 @@ GET http://localhost:8000/dash?query={"cmd": "all_jobs", "page": 1 }
 GET http://localhost:8000/dash?query={"cmd": "jobs_in_stage", "stage": "success", "page": 1}
 
 ###
-GET http://localhost:8000/dash?query={"cmd": "job", "id": "01gbx7fa0sxmnzhfe3gqj5jsme"}
+GET http://localhost:8000/dash?query={"cmd": "job", "id": "01GCKG7N92J8SR6KY8JZXX6QAN"}

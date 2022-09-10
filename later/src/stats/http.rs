@@ -76,7 +76,7 @@ async fn handle_http(
                 .await
                 .map(|b| encoder::decode::<JobMeta>(&b))
             {
-                Some(Ok(job)) => DashboardResponse::json(job)?,
+                Some(Ok(job)) => DashboardResponse::json(get_job_item(job))?,
                 _ => DashboardResponse::error(404, "Job not found"),
             }
         }
@@ -106,12 +106,7 @@ async fn populate_jobs(ids: Vec<JobId>, persist: Arc<Persist>) -> Vec<Value> {
             .get_of_type::<JobMeta>(&meta_id.to_string())
             .await
         {
-            Some(item) => {
-                json!({
-                    "id": item.id.clone(),
-                    "info": item
-                })
-            }
+            Some(item) => get_job_item(item),
             _ => json!({
                 "id": job_id,
                 "info": null
@@ -121,6 +116,13 @@ async fn populate_jobs(ids: Vec<JobId>, persist: Arc<Persist>) -> Vec<Value> {
     }
 
     items
+}
+
+fn get_job_item(item: JobMeta) -> Value {
+    json!({
+        "id": item.id.clone(),
+        "info": item
+    })
 }
 
 async fn scan_range<T: DeserializeOwned>(

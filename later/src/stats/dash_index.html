@@ -18,6 +18,10 @@
         .page-item[disabled] a {
             background-color: #c8c8c8;
         }
+
+        tr.active {
+            background-color: #0d6efd1a;
+        }
     </style>
 </head>
 
@@ -53,9 +57,9 @@
                             <th>Stage</th>
                         </tr>
                     </thead>
-                    <tr v-for="job in jobs.result">
+                    <tr v-for="job in jobs.result" :class="{active: job_sel != null && job.id == job_sel.id}">
                         <td>
-                            <a href="#" @click="showJob(job)">
+                            <a href="#" @click.prevent="showJob(job)">
                                 <pre>{{job.id}}</pre>
                             </a>
                         </td>
@@ -95,9 +99,52 @@
             </div>
         </div>
 
+        <!-- Job details modal -->
+        <div v-if="job_sel" id="jobDetails" class="modal fade" data-bs-backdrop="static" data-bs-keyboard="false"
+            tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="width: auto;">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <span v-if="job_parent_id">
+                                <a :href="'#' + job_parent_id" @click.prevent="loadAndShowJob(job_parent_id)">&laquo;</a>
+                            </span>
+                            <code>{{job_sel.id}}</code>
+                        </h5>
+                        <button type="button" class="btn-close" @click="job_sel = null" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <h3>Job Type</h3>
+                        <code>{{job_sel.payload_type}}</code>
+                        <hr/>
+                        <h3>Previous Stages</h3>
+                        <table class="table table-striped">
+                            <tr v-if="job_sel.stage">
+                                <td>{{job_sel.stage.date}}</td>
+                                <td><code>{{job_sel.stage.type}}</code></td>
+                            </tr>
+                            <tr v-for="stage in job_sel.previous_stages.slice().reverse()">
+                                <td>{{stage.date}}</td>
+                                <td>
+                                    <code>{{stage.type}}</code>
+                                    <span v-if="stage.parent_id">
+                                        for <a :href="'#' + stage.parent_id" target="_blank" @click.prevent="loadAndShowJob(stage.parent_id)"><code>{{stage.parent_id}}</code></a>
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
             integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF"
             crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.1/jquery.min.js"
+            integrity="sha512-aVKKRRi/Q/YV+4mjoKBsE4x3H+BkegoM/em46NNlCqNTmUYADjBbeNefNxYV7giUp0VxICtqdrbqU7iVaeZNXA=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
         <script src="https://cdn.jsdelivr.net/npm/vue@2.7.10/dist/vue.min.js"
             integrity="sha256-rjpmUiJ6gyRPZ2rJkp3soGVAnXC0xotw7s61nf7BqMY=" crossorigin="anonymous"></script>
         <script>
@@ -116,6 +163,8 @@
                         count: 0
                     },
                     page: 1,
+                    job_sel: null,
+                    job_parent_id: null
                 },
                 methods: {
                     loadCounts: async function () {
@@ -159,12 +208,30 @@
                     updateTime: function () {
                         setTimeout(update_time, 500);
                     },
-                    showJob: function (job) {
+                    loadAndShowJob: async function (id) {
+                        if (this.job_sel != null) {
+                            this.job_parent_id = this.job_sel.id;
+                        }
 
+                        let resp = await fetch(get_uri({ cmd: "job", id: id }));
+                        let json = await resp.json();
+                        this.showJob(json);
+                    },
+                    showJob: function (job) {
+                        location.hash = job.id;
+                        this.job_sel = job.info;
+                        setTimeout(function () {
+                            $('#jobDetails').modal('show');
+                        }, 50);
                     }
                 },
                 mounted: function () {
                     this.loadCounts();
+
+                    if (location.hash.length > 1) {
+                        var id = location.hash.substring(1);
+                        this.loadAndShowJob(id);
+                    }
 
                     setInterval(this.loadCounts, 2500);
                     setInterval(this.updateTime, 1000);
@@ -179,7 +246,7 @@
             function getPages(paging) {
                 var start = Math.max(paging.page - 10, 1);
                 var end = Math.max(Math.min(paging.total, paging.page + 10), Math.min(20, paging.total));
-                
+
                 var result = [];
                 if (paging != null) {
                     for (var i = start; i <= end; i++) {
