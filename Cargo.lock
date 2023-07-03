@@ -2112,14 +2112,13 @@ checksum = "97477e48b4cf8603ad5f7aaf897467cf42ab4218a38ef76fb14c2d6773a6d6a8"
 
 [[package]]
 name = "rusty_ulid"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf6169f464e79b379a190df5d09d59fe0b581b1b0f788ce9de63953c31897aa0"
+checksum = "3e0719c0520bdfc6f5a02c8bd8b20f9fc8785de57d4e117e144ade9c5f152626"
 dependencies = [
- "chrono",
- "doc-comment",
  "rand",
  "serde",
+ "time 0.3.13",
 ]
 
 [[package]]
