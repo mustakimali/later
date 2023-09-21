@@ -1,4 +1,4 @@
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
 use serde::Deserialize;
@@ -142,11 +142,12 @@ pub struct DashQuery {
 
 #[get("/dash")]
 #[tracing::instrument(skip(state))]
-async fn dashboard(
-    state: web::Data<Arc<AppContext>>,
-    query: web::Query<DashQuery>,
-) -> impl Responder {
-    match state.jobs.get_dashboard(query.query.clone()).await {
+async fn dashboard(state: web::Data<Arc<AppContext>>, req: HttpRequest) -> impl Responder {
+    match state
+        .jobs
+        .get_dashboard("/dash".into(), req.query_string().to_string())
+        .await
+    {
         Ok(res) => {
             let mut builder = HttpResponse::Ok();
 

@@ -41,10 +41,29 @@ pub enum ResponseError {
     ParseError(#[from] serde_json::Error),
 }
 
+#[tracing::instrument(skip(persist))]
 pub(crate) async fn handle_http_raw(
     persist: Arc<Persist>,
+    prefix: String,
     query_string: String,
 ) -> Result<DashboardResponse, ResponseError> {
+    let query_string = if query_string.starts_with("query=") {
+        query_string[6..].to_string()
+    } else {
+        query_string
+    }
+    .replace("%22", "\"");
+
+    dbg!(&query_string, &prefix);
+
+    if query_string.is_empty() {
+        return Ok(DashboardResponse::html(
+            include_str!("dash_index.html")
+                .replace("http://localhost:8000/dash", &prefix)
+                .to_string(),
+        ));
+    }
+
     let cmd = serde_json::from_str::<DashboardCmd>(&query_string)?;
     handle_http(persist, cmd).await
 }
@@ -163,14 +182,14 @@ impl DashboardResponse {
         })
     }
 
-    pub fn html(json: String) -> Self {
+    pub fn html(html: String) -> Self {
         Self {
             status_code: 200,
             headers: hashmap!(
                 ("content-type", "text/html"),
                 ("access-control-allow-origin", "*")
             ),
-            body: json,
+            body: html,
         }
     }
 

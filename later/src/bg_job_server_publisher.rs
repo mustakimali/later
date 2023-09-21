@@ -49,9 +49,10 @@ impl BackgroundJobServerPublisher {
     #[cfg(feature = "dashboard")]
     pub async fn get_dashboard(
         &self,
+        prefix: String,
         query_string: String,
     ) -> Result<DashboardResponse, ResponseError> {
-        self.stats.handle_http(query_string).await
+        self.stats.handle_http(prefix, query_string).await
     }
 
     /// Blocks until there is at least worker available.

@@ -52,7 +52,11 @@ enum IdOf {
 #[async_trait::async_trait]
 pub(crate) trait EventsHandler: Sync + Send {
     async fn new_event(&self, event: Event); // Infallible
-    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError>;
+    async fn handle_http(
+        &self,
+        prefix: String,
+        query_string: String,
+    ) -> Result<DashboardResponse, ResponseError>;
 }
 
 pub struct Stats {
@@ -204,8 +208,12 @@ impl EventsHandler for Stats {
         }
     }
 
-    async fn handle_http(&self, query_string: String) -> Result<DashboardResponse, ResponseError> {
-        http::handle_http_raw(self.storage.clone(), query_string).await
+    async fn handle_http(
+        &self,
+        prefix: String,
+        query_string: String,
+    ) -> Result<DashboardResponse, ResponseError> {
+        http::handle_http_raw(self.storage.clone(), prefix, query_string).await
     }
 }
 
@@ -217,7 +225,11 @@ impl EventsHandler for NoOpStats {
         ()
     }
 
-    async fn handle_http(&self, _query_string: String) -> Result<DashboardResponse, ResponseError> {
+    async fn handle_http(
+        &self,
+        _prefix: String,
+        _query_string: String,
+    ) -> Result<DashboardResponse, ResponseError> {
         Ok(DashboardResponse::error(
             400,
             "feature 'dashboard' is not enabled",
