@@ -54,8 +54,6 @@ pub(crate) async fn handle_http_raw(
     }
     .replace("%22", "\"");
 
-    dbg!(&query_string, &prefix);
-
     if query_string.is_empty() {
         return Ok(DashboardResponse::html(
             include_str!("dash_index.html")
