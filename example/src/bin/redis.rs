@@ -39,7 +39,7 @@ mod bg {
     pub struct JobContext {}
 }
 
-#[tracing::instrument(skip(_ctx))]
+#[tracing::instrument(skip_all)]
 async fn handle_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
@@ -58,7 +58,7 @@ async fn handle_sample_message(
     Ok(())
 }
 
-#[tracing::instrument(skip(_ctx))]
+#[tracing::instrument(skip_all)]
 async fn handle_another_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,

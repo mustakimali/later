@@ -9,7 +9,7 @@ use lapin::types::FieldTable;
 
 use std::{sync::Arc, time::Duration};
 
-#[tracing::instrument(skip(handler))]
+#[tracing::instrument(skip_all, fields(command = ?command))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
