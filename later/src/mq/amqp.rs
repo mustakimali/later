@@ -1,4 +1,5 @@
 use crate::bg_job_server::sleep_ms;
+use anyhow::Context;
 use async_std::stream::StreamExt;
 use lapin::{
     message::Delivery,
@@ -13,6 +14,7 @@ use lapin::{
 use super::{MqClient, MqConsumer, MqPayload, MqPublisher};
 
 static EXCHANGE_NAME: &str = "later_dx";
+static EXCHANGE_NAME_DLX: &str = "later_dlx";
 
 pub struct RabbitMq {
     address: String,
@@ -173,10 +175,17 @@ impl MqClient for RabbitMq {
         routing_key: &str,
         worker_id: i32,
     ) -> anyhow::Result<Box<dyn MqConsumer>> {
-        let connection =
-            Connection::connect(&self.address, ConnectionProperties::default()).await?;
-        let channel = connection.create_channel().await?;
-        channel.basic_qos(50, BasicQosOptions::default()).await?;
+        let connection = Connection::connect(&self.address, ConnectionProperties::default())
+            .await
+            .context("connect")?;
+        let channel = connection
+            .create_channel()
+            .await
+            .context("create channel")?;
+        channel
+            .basic_qos(50, BasicQosOptions::default())
+            .await
+            .context("basic_qos")?;
 
         let _ = channel
             .exchange_declare(
@@ -189,7 +198,21 @@ impl MqClient for RabbitMq {
                 },
                 FieldTable::default(),
             )
-            .await?;
+            .await
+            .context("create exchange")?;
+        let _ = channel
+            .exchange_declare(
+                EXCHANGE_NAME_DLX,
+                lapin::ExchangeKind::Direct,
+                ExchangeDeclareOptions {
+                    durable: true,
+                    auto_delete: false,
+                    ..Default::default()
+                },
+                FieldTable::default(),
+            )
+            .await
+            .context("create dlx exchange")?;
 
         let _q = declare_get_queue(&channel, routing_key).await?;
 
@@ -199,18 +222,20 @@ impl MqClient for RabbitMq {
                 EXCHANGE_NAME,
                 routing_key,
                 QueueBindOptions::default(),
-                FieldTable::default(),
+                args_with_dlx(),
             )
-            .await?;
+            .await
+            .context("queue_bind")?;
 
         let consumer = channel
             .basic_consume(
                 routing_key,
                 &format!("later-consumer-{}", worker_id),
                 BasicConsumeOptions::default(),
-                FieldTable::default(),
+                args_with_dlx(),
             )
-            .await?;
+            .await
+            .context("basic_consume")?;
 
         Ok(Box::new(Consumer { inner: consumer }))
     }
@@ -236,7 +261,17 @@ async fn declare_get_queue(channel: &Channel, routing_key: &str) -> anyhow::Resu
                 auto_delete: false,
                 ..Default::default()
             },
-            FieldTable::default(),
+            args_with_dlx(),
         )
-        .await?)
+        .await
+        .context("queue_declare")?)
+}
+
+fn args_with_dlx() -> FieldTable {
+    let mut arg = FieldTable::default();
+    arg.insert(
+        "x-dead-letter-exchange".into(),
+        AMQPValue::ShortString(EXCHANGE_NAME_DLX.into()),
+    );
+    arg
 }
