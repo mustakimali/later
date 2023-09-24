@@ -7,7 +7,7 @@
 //! ### 1. Import `later` and required dependencies
 //!
 //! ```toml
-//! later = { version = "0.0.7", features = ["redis", "postgres"] }
+//! later = { version = "0.0.7", features = ["redis", "postgres"] } # choose one storage  backend
 //! serde = "1.0"
 //! ```
 //!
@@ -227,6 +227,9 @@
 //!
 //! * `redis`: `later::storage::Redis::new("redis://127.0.0.1/").await`
 //! * `postgres`: `later::storage::Postgres::new("postgres://test:test@localhost/later_test").await` (Requires feature `postgres`)
+//!
+//! ## Dashboard
+//! Enable feature `dashboard` to enable the experimental dashboard. View the README.md of this create for demo.
 use crate::core::BgJobHandler;
 
 use mq::{MqClient, MqPublisher};

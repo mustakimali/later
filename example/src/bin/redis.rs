@@ -135,11 +135,6 @@ async fn enqueue_num(
     HttpResponse::Ok().json(ids)
 }
 
-#[derive(Debug, Deserialize)]
-pub struct DashQuery {
-    query: String,
-}
-
 #[get("/dash")]
 #[tracing::instrument(skip(state))]
 async fn dashboard(state: web::Data<Arc<AppContext>>, req: HttpRequest) -> impl Responder {

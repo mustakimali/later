@@ -10,7 +10,7 @@ documentation = "https://docs.rs/later"
 categories = ["web-programming"]
 
 [features]
-default = ["all"]
+default = []
 all = ["postgres", "redis", "dashboard"]
 postgres = ["dep:sqlx"]
 redis = ["dep:redis", "dep:relock"]
