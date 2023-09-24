@@ -48,8 +48,8 @@ async fn range_basic(storage: Box<dyn Storage>) {
             .unwrap();
     }
 
-    let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let scan_result = storage.scan_range(&key).await;
+    let count = scan_result.count().await;
 
     assert_eq!(10, count);
 }
@@ -70,8 +70,8 @@ async fn range_basic_2_items(storage: Box<dyn Storage>) {
         .await
         .unwrap();
 
-    let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let scan_result = storage.scan_range(&key).await;
+    let count = scan_result.count().await;
 
     assert_eq!(2, count);
 
@@ -97,8 +97,8 @@ async fn range_basic_1_item(storage: Box<dyn Storage>) {
         .await
         .unwrap();
 
-    let mut scan_result = storage.scan_range(&key).await;
-    let count = scan_result.count(&storage).await;
+    let scan_result = storage.scan_range(&key).await;
+    let count = scan_result.count().await;
 
     assert_eq!(1, count);
 
@@ -125,7 +125,7 @@ async fn range_trim(storage: Box<dyn Storage>) {
             .unwrap();
     }
 
-    assert_eq!(100, storage.scan_range(&key).await.count(&storage).await);
+    assert_eq!(100, storage.scan_range(&key).await.count().await);
 
     // scan first 50
     let mut range = storage.scan_range(&key).await;
@@ -141,15 +141,15 @@ async fn range_trim(storage: Box<dyn Storage>) {
     let _ = storage.trim(range).await;
 
     // should have only 50
-    let mut range = storage.scan_range(&key).await;
-    assert_eq!(50, range.count(&storage).await);
+    let range = storage.scan_range(&key).await;
+    assert_eq!(50, range.count().await);
 
     // should be empty
     let mut range = storage.scan_range(&key).await;
     while range.next(&storage).await.is_some() {}
     let _ = storage.trim(range).await;
 
-    assert_eq!(0, storage.scan_range(&key).await.count(&storage).await); // should be empty
+    assert_eq!(0, storage.scan_range(&key).await.count().await); // should be empty
 }
 
 #[test_case(create_redis_client().await; "redis")]
@@ -293,6 +293,72 @@ async fn scan_del_second_item(storage: Box<dyn Storage>) {
     let mut range = storage.scan_range(&key).await; // start from beginning
     let remaining_items = read_all_string(&mut range, &storage).await;
     assert_eq!(remaining_items, &["item-1", "item-3", "item-4"]);
+}
+
+#[test_case(create_redis_client().await; "redis")]
+#[test_case(create_postgres_client().await; "postgres")]
+#[tokio::test]
+async fn range_duplicate_ignored(storage: Box<dyn Storage>) {
+    let key = format!("key-{}", crate::generate_id());
+
+    storage.push(&key, "Item-1".as_bytes()).await.unwrap();
+    storage.push(&key, "Item-1".as_bytes()).await.unwrap();
+    storage.push(&key, "Item-2".as_bytes()).await.unwrap();
+
+    let mut range = storage.scan_range(&key).await;
+    let all_items = read_all_string(&mut range, &storage).await;
+
+    assert_eq!(all_items, &["Item-1", "Item-2"]);
+
+    storage.del_range(&key).await.expect("del_range");
+}
+
+#[test_case(create_redis_client().await; "redis")]
+#[test_case(create_postgres_client().await; "postgres")]
+#[tokio::test]
+async fn scan_range_from(storage: Box<dyn Storage>) {
+    let key = format!("key-{}", generate_id());
+
+    for i in 1..5 {
+        // creates item-1 ... item-4
+        storage
+            .push(&key, format!("Item-{}", i).as_bytes())
+            .await
+            .expect("push");
+    }
+
+    let range = storage.scan_range_from(&key, "Item-2".as_bytes()).await;
+    assert!(range.is_some());
+
+    let mut range = range.unwrap();
+    range.del(&storage).await;
+
+    let mut range = storage.scan_range(&key).await;
+    let all_items = read_all_string(&mut range, &storage).await;
+
+    assert_eq!(all_items, &["Item-1", "Item-3", "Item-4"]);
+}
+
+#[test_case(create_redis_client().await; "redis")]
+#[test_case(create_postgres_client().await; "postgres")]
+#[tokio::test]
+async fn scan_skip(storage: Box<dyn Storage>) {
+    let key = format!("key-{}", generate_id());
+
+    for i in 1..5 {
+        // creates item-1 ... item-4
+        storage
+            .push(&key, format!("Item-{}", i).as_bytes())
+            .await
+            .expect("push");
+    }
+
+    let mut range = storage.scan_range(&key).await;
+    range.skip(1);
+
+    let all_items = read_all_string(&mut range, &storage).await;
+
+    assert_eq!(all_items, &["Item-2", "Item-3", "Item-4"]);
 }
 
 async fn read_all_string(

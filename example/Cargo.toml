@@ -8,15 +8,20 @@ publish = false
 
 [dependencies]
 # internal
-later = { path = "../later/", features = ["redis", "postgres"] }
+later = { path = "../later/", features = ["redis", "postgres", "dashboard"] }
 
 # external
 rocket = { version = "0.5.0-rc.2", features = ["secrets", "tls", "json"] }
+actix-web = "4"
+tokio = { version = "1.20.1", features = ["full"]}
 anyhow = "1.0.60"
 serde = "1.0"
+serde_json = "1.0"
 
 tracing = "0.1.36"
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing-opentelemetry = "0.17.4"
 opentelemetry = "0.17.0"
 opentelemetry-jaeger = "0.16.0"
+
+serde-querystring = "0.0.8"

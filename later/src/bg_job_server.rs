@@ -4,7 +4,7 @@ use crate::{
     encoder,
     models::{AmqpCommand, ChannelCommand},
     mq::MqClient,
-    BackgroundJobServer, BackgroundJobServerPublisher, UtcDateTime,
+    BackgroundJobServer, BackgroundJobServerPublisher, ServerConfig, UtcDateTime,
 };
 use async_std::channel::{Receiver, Sender};
 use std::{marker::PhantomData, sync::Arc, time::Duration};
@@ -14,22 +14,27 @@ where
     C: Sync + Send + 'static,
     H: BgJobHandler<C> + Sync + Send + 'static,
 {
-    pub async fn start(handler: H, mq_client: Arc<Box<dyn MqClient>>) -> anyhow::Result<Self> {
+    pub async fn start(
+        handler: H,
+        mq_client: Arc<Box<dyn MqClient>>,
+        config: ServerConfig,
+    ) -> anyhow::Result<Self> {
         let mut workers = Vec::new();
         let handler = Arc::new(handler);
         let publisher = handler.get_publisher();
-        let num_bg_workers = 5;
+        let num_bg_workers = config.worker_count;
         let (tx, rx) = async_std::channel::unbounded::<ChannelCommand>();
 
         // workers to process jobs (distributed)
-        for id in 1..num_bg_workers {
+        for id in 0..num_bg_workers {
             let mq_client = mq_client.clone();
             let routing_key = publisher.routing_key.clone();
             let handler = handler.clone();
             let inproc_tx = tx.clone();
 
             workers.push(tokio::spawn(async move {
-                start_distributed_job_worker(handler, id, mq_client, &routing_key, inproc_tx).await
+                start_distributed_job_worker(handler, id as _, mq_client, &routing_key, inproc_tx)
+                    .await
             }));
         }
 

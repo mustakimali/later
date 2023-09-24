@@ -1,9 +1,9 @@
-#[macro_use]
-extern crate rocket;
-
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use bg::*;
 use later::{mq::amqp, BackgroundJobServer, Config};
-use rocket::State;
+use serde::Deserialize;
+use serde_json::json;
+use std::sync::Arc;
 use tracing::Instrument;
 
 mod bg {
@@ -19,36 +19,60 @@ mod bg {
     #[derive(Serialize, Deserialize, Debug)]
     pub struct SampleMessage {
         pub txt: String,
+        pub action: Action,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub enum Action {
+        Success,
+        Delay { delay_sec: u8 },
+        Failed,
     }
 
     #[derive(Serialize, Deserialize, Debug)]
     pub struct AnotherSampleMessage {
         pub txt: String,
+        pub action: Action,
     }
 
     #[derive(Clone)]
     pub struct JobContext {}
 }
 
-#[tracing::instrument(skip(_ctx))]
+#[tracing::instrument(skip_all)]
 async fn handle_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: SampleMessage,
 ) -> anyhow::Result<()> {
     tracing::info!("On Handle handle_sample_message: {:?}", payload);
 
+    match payload.action {
+        Action::Delay { delay_sec } => {
+            tracing::info!("Delay for {} secs", delay_sec);
+            tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+        }
+        Action::Failed => return Err(anyhow::anyhow!("Simulated failure")),
+        _ => (),
+    }
+
     Ok(())
 }
 
-#[tracing::instrument(skip(_ctx))]
+#[tracing::instrument(skip_all)]
 async fn handle_another_sample_message(
     _ctx: DeriveHandlerContext<JobContext>,
     payload: AnotherSampleMessage,
 ) -> anyhow::Result<()> {
+    if let Action::Delay { delay_sec } = payload.action {
+        tracing::info!("Delay for {} secs", delay_sec);
+        tokio::time::sleep(std::time::Duration::from_secs(delay_sec as u64)).await;
+    }
+
     let prefix = format!("{}-cont", payload.txt);
     let parent_job_id = _ctx
         .enqueue(SampleMessage {
             txt: format!("{}-1", prefix),
+            action: payload.action.clone(),
         })
         .await?;
     let child_job_1_id = _ctx
@@ -56,6 +80,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-2", prefix),
+                action: payload.action.clone(),
             },
         )
         .await?;
@@ -64,6 +89,7 @@ async fn handle_another_sample_message(
             parent_job_id.clone(),
             SampleMessage {
                 txt: format!("{}-3", prefix),
+                action: Action::Failed,
             },
         )
         .await?;
@@ -80,25 +106,64 @@ struct AppContext {
     jobs: BackgroundJobServer<JobContext, DeriveHandler<JobContext>>,
 }
 
-#[get("/")]
+#[derive(Debug, Deserialize)]
+pub struct EnqueueQuery {
+    delay_sec: Option<u8>,
+}
+
+#[get("/enqueue/{num}")]
 #[tracing::instrument(skip(state))]
-async fn hello(state: &State<AppContext>) -> String {
-    let id = later::generate_id();
-    let msg = AnotherSampleMessage {
-        txt: format!("{id}-1"),
-    };
-    state.jobs.enqueue(msg).await.expect("Enqueue Job");
-    "Hello, world!".to_string()
+async fn enqueue_num(
+    num: web::Path<usize>,
+    param: web::Query<EnqueueQuery>,
+    state: web::Data<Arc<AppContext>>,
+) -> impl Responder {
+    let mut ids = Vec::new();
+    for i in 0..*num {
+        let id = later::generate_id();
+        let msg = AnotherSampleMessage {
+            txt: format!("{id}-{}", i),
+            action: match param.delay_sec {
+                Some(delay_sec) => Action::Delay { delay_sec },
+                None => Action::Success,
+            },
+        };
+        let id = state.jobs.enqueue(msg).await.expect("Enqueue Job");
+        ids.push(id.to_string());
+    }
+
+    HttpResponse::Ok().json(ids)
+}
+
+#[get("/dash")]
+#[tracing::instrument(skip(state))]
+async fn dashboard(state: web::Data<Arc<AppContext>>, req: HttpRequest) -> impl Responder {
+    match state
+        .jobs
+        .get_dashboard("/dash".into(), req.query_string().to_string())
+        .await
+    {
+        Ok(res) => {
+            let mut builder = HttpResponse::Ok();
+
+            for (k, v) in res.headers {
+                builder.append_header((k, v));
+            }
+
+            return builder.body(res.body);
+        }
+        Err(e) => HttpResponse::NotFound().json(json!({ "error": format!("{}", e) })),
+    }
 }
 
 #[get("/metrics")]
 #[tracing::instrument(skip(state))]
-async fn metrics(state: &State<AppContext>) -> String {
+async fn metrics(state: web::Data<Arc<AppContext>>) -> String {
     state.jobs.get_metrics().expect("metrics")
 }
 
-#[launch]
-async fn rocket() -> rocket::Rocket<rocket::Build> {
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Registry;
 
@@ -126,7 +191,12 @@ async fn rocket() -> rocket::Rocket<rocket::Build> {
         .await
 }
 
-async fn start() -> rocket::Rocket<rocket::Build> {
+#[tracing::instrument]
+async fn start() -> std::io::Result<()> {
+    let port = std::env::var("PORT")
+        .unwrap_or("8000".into())
+        .parse()
+        .unwrap_or(8000);
     let job_ctx = JobContext {};
     let storage = later::storage::Redis::new("redis://127.0.0.1/")
         .await
@@ -147,8 +217,16 @@ async fn start() -> rocket::Rocket<rocket::Build> {
     .expect("start bg server");
 
     let ctx = AppContext { jobs: bjs };
+    let ctx = Arc::new(ctx);
 
-    rocket::build()
-        .mount("/", routes![hello, metrics])
-        .manage(ctx)
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(ctx.clone()))
+            .service(dashboard)
+            .service(metrics)
+            .service(enqueue_num)
+    })
+    .bind(("127.0.0.1", port))?
+    .run()
+    .await
 }

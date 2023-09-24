@@ -1,12 +1,15 @@
-use crate::core::JobParameter;
-use crate::models::{AmqpCommand, Job, RecurringJob};
-use crate::models::{DelayedStage, EnqueuedStage, JobConfig, Stage, WaitingStage};
-use crate::mq::MqClient;
-use crate::persist::Persist;
-use crate::stats::{Event, EventsHandler, NoOpStats, Stats};
-use crate::storage::Storage;
-use crate::{encoder, RecurringJobId};
-use crate::{metrics, BackgroundJobServerPublisher, JobId, UtcDateTime};
+use crate::{
+    core::JobParameter,
+    encoder, metrics,
+    models::{
+        AmqpCommand, DelayedStage, EnqueuedStage, Job, JobConfig, RecurringJob, Stage, WaitingStage,
+    },
+    mq::MqClient,
+    persist::Persist,
+    stats::{DashboardResponse, Event, EventsHandler, NoOpStats, ResponseError, Stats},
+    storage::Storage,
+    BackgroundJobServerPublisher, JobId, RecurringJobId, UtcDateTime,
+};
 use anyhow::Context;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -41,6 +44,15 @@ impl BackgroundJobServerPublisher {
             publisher,
             routing_key,
         })
+    }
+
+    #[cfg(feature = "dashboard")]
+    pub async fn get_dashboard(
+        &self,
+        prefix: String,
+        query_string: String,
+    ) -> Result<DashboardResponse, ResponseError> {
+        self.stats.handle_http(prefix, query_string).await
     }
 
     /// Blocks until there is at least worker available.
@@ -108,7 +120,6 @@ impl BackgroundJobServerPublisher {
         let id = job.id.clone();
 
         self.save(&job).await?;
-        Event::NewJob((&job).into()).publish(&self).await;
         self.handle_job_enqueue_initial(job).await?;
         Ok(id)
     }
@@ -150,11 +161,16 @@ impl BackgroundJobServerPublisher {
                 .save_continuation(&job.id, w.parent_id.clone())
                 .await?;
         }
+
+        // event
+        Event::SaveJob(job.into()).publish(&self).await;
+
         self.storage.save_job(job).await
     }
 
     pub(crate) async fn expire(&self, job: &Job, _duration: Duration) -> anyhow::Result<()> {
         // ToDo: expire properly
+        Event::ExpireJob(job.into()).publish(&self).await;
         self.storage.expire(job.id.clone()).await
     }
 

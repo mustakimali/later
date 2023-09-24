@@ -10,11 +10,11 @@ documentation = "https://docs.rs/later"
 categories = ["web-programming"]
 
 [features]
-default = ["all"]
+default = []
 all = ["postgres", "redis", "dashboard"]
 postgres = ["dep:sqlx"]
-redis = ["dep:redis"]
-dashboard = []
+redis = ["dep:redis", "dep:relock"]
+dashboard = ["dep:serde-querystring", "dep:serde_json", "dep:thiserror"]
 
 [dependencies]
 # internal
@@ -40,12 +40,17 @@ async-std = "1.12.0"
 prometheus = "0.13.1"
 lazy_static = "1.4.0"
 typed-builder = "0.10.0"
+blake3 = "1.3.1"
 
 opentelemetry = "0.17.0"
 tracing-opentelemetry = "0.17.4"
 
 sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
+relock = { optional = true, version = "0.1.2" }
+serde-querystring = { optional = true, version = "0.0.8" }
+serde_json = { optional = true, version = "1.0" }
+thiserror = { optional = true, version = "1.0" }
 
 [dev-dependencies]
 test-case = "2.2.1"

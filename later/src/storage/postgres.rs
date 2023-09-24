@@ -1,4 +1,6 @@
-use super::Storage;
+use crate::encoder;
+
+use super::{LockHandle, Storage};
 use sqlx::{postgres::PgPoolOptions, Pool};
 
 pub struct Postgres {
@@ -16,6 +18,8 @@ impl Postgres {
             .await?;
 
         sqlx::migrate!("./migrations").run(&pool).await?;
+
+        // ToDo: background task to remove expired items
 
         Ok(Self { pool })
     }
@@ -92,5 +96,34 @@ impl Storage for Postgres {
         .await?;
 
         Ok(())
+    }
+
+    async fn exist(&self, key: &str) -> anyhow::Result<bool> {
+        let result = sqlx::query!(
+            r#"SELECT COUNT(*) as count FROM later_storage WHERE key = $1 AND date_expire IS NULL"#,
+            key
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(result.count.unwrap_or(0) > 0)
+    }
+
+    async fn lock(&self, key: &str) -> anyhow::Result<LockHandle> {
+        todo!()
+    }
+
+    async fn atomic_incr(&self, key: &str, delta: usize) -> anyhow::Result<usize> {
+        let count = self
+            .get(key)
+            .await
+            .unwrap_or_else(|| encoder::encode(0).unwrap());
+        let count = encoder::decode::<usize>(&count)?;
+        if delta > 0 {
+            self.set(key, &encoder::encode(count + delta)?).await?;
+            Ok(count + delta)
+        } else {
+            Ok(count)
+        }
     }
 }

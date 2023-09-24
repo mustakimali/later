@@ -1,0 +1,26 @@
+# enqueue n=2
+GET http://localhost:8000/enqueue/10000
+
+###
+
+GET http://localhost:8000/enqueue/1?delay_sec=1
+
+###
+
+# get metrics
+GET http://localhost:8000/metrics
+
+###
+
+# dash get
+GET http://localhost:8000/dash?query={"cmd": "count"}
+
+###
+
+GET http://localhost:8000/dash?query={"cmd": "all_jobs", "page": 1 }
+###
+
+GET http://localhost:8000/dash?query={"cmd": "jobs_in_stage", "stage": "success", "page": 1}
+
+###
+GET http://localhost:8000/dash?query={"cmd": "job", "id": "01GCKG7N92J8SR6KY8JZXX6QAN"}

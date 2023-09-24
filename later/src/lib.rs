@@ -7,7 +7,7 @@
 //! ### 1. Import `later` and required dependencies
 //!
 //! ```toml
-//! later = { version = "0.0.7", features = ["redis", "postgres"] }
+//! later = { version = "0.0.7", features = ["redis", "postgres"] } # choose one storage  backend
 //! serde = "1.0"
 //! ```
 //!
@@ -198,7 +198,7 @@
 //! # }
 //! ```
 //!
-//! ## Recurring jobs
+//! ## Recurring jobsDashboardResponse
 //!
 //! Run recurring job based on cron schedule.
 //!
@@ -227,6 +227,9 @@
 //!
 //! * `redis`: `later::storage::Redis::new("redis://127.0.0.1/").await`
 //! * `postgres`: `later::storage::Postgres::new("postgres://test:test@localhost/later_test").await` (Requires feature `postgres`)
+//!
+//! ## Dashboard
+//! Enable feature `dashboard` to enable the experimental dashboard. View the README.md of this create for demo.
 use crate::core::BgJobHandler;
 
 use mq::{MqClient, MqPublisher};
@@ -254,12 +257,12 @@ mod metrics;
 mod models;
 pub mod mq;
 mod persist;
-mod stats;
+pub mod stats;
 pub mod storage;
 
 pub type UtcDateTime = chrono::DateTime<chrono::Utc>;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct JobId(String);
 impl Display for JobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -293,7 +296,7 @@ pub struct BackgroundJobServerPublisher {
 }
 
 pub fn generate_id() -> String {
-    rusty_ulid::generate_ulid_string().to_lowercase()
+    rusty_ulid::generate_ulid_string()
 }
 
 #[derive(TypedBuilder)]
@@ -309,4 +312,20 @@ where
 
     #[builder(default = 6)]
     pub default_retry_count: u8,
+    #[builder(default = 6)]
+    pub worker_count: u8,
+}
+
+pub struct ServerConfig {
+    pub default_retry_count: u8,
+    pub worker_count: u8,
+}
+
+impl<C: Send + Sync> Config<C> {
+    pub fn to_server_config(&self) -> ServerConfig {
+        ServerConfig {
+            default_retry_count: self.default_retry_count,
+            worker_count: self.worker_count,
+        }
+    }
 }

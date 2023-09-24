@@ -6,7 +6,7 @@ A distributed background job manager and runner for Rust. This is currently in P
 
 Look at the [documentations](https://docs.rs/later/latest/later/#later) for details. In general the one time setup involves:
 
-* Import `later` and required dependencies
+* Import `later` and required dependencies (Enable one of the storage backends using feature flag eg. `redis` or `postgres`)
 * Define some types to use as a payload to the background jobs
 * Generate the stub
 * Use the generated code to bootstrap the background job server
@@ -31,6 +31,13 @@ Just like fire and forget jobs that starts after a certain interval.
 
 Run recurring jobs based on cron schedule. 
 * To fix: to delete recurring job.
+
+### Dashboard
+
+The dashboard lets you view scheduled jobs, running jobs, and completed jobs. This is an experimental feature. To enable dashboard use the feature flag `dashboard`. View example in [`../example/src/bin/redis.rs`](../example/src/bin/redis.rs).
+
+![Dashboard Demo](../example/dashboard-demo.png)
+
 
 
 ## Project status

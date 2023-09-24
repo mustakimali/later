@@ -9,7 +9,7 @@ use lapin::types::FieldTable;
 
 use std::{sync::Arc, time::Duration};
 
-#[tracing::instrument(skip(handler))]
+#[tracing::instrument(skip_all, fields(command = ?command))]
 pub(crate) async fn handle_amqp_command<C, H>(
     command: AmqpCommand,
     worker_id: i32,
@@ -164,7 +164,7 @@ async fn handle_poll_requeued_job_command<C, H: BgJobHandler<C>>(
     Ok(())
 }
 
-#[tracing::instrument(skip(handler))]
+#[tracing::instrument(skip_all, fields(job_id = %job.id, job_type = %job.payload_type))]
 async fn handle_job<C, H>(job: Job, handler: Arc<H>) -> Result<(), anyhow::Error>
 where
     C: Sync + Send,

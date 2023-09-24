@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Later Dashboard</title>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <style>
+        .date {
+            cursor: pointer;
+        }
+
+        .page-item[disabled] a {
+            background-color: #c8c8c8;
+        }
+
+        tr.active {
+            background-color: #0d6efd1a;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">later</a>
+        </div>
+    </nav>
+    <br />
+    <div id="app" class="container">
+        <div class="row">
+            <div class="col-sm-2">
+                <ul class="list-group" v-for="(count, name) in stages">
+                    <li class="list-group-item">
+                        <a href="#" @click="loadStageReset(name, count)">
+                            {{name}}
+                            <span class="badge bg-secondary rounded-pill">{{count}}</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="col-sm-10">
+                <div class="alert alert-info" v-if="jobs.result.length == 0">
+                    Nothing to show here
+                </div>
+                <table class="table table-striped" v-if="jobs.result.length > 0">
+                    <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Type</th>
+                            <th>Date</th>
+                            <th>Stage</th>
+                        </tr>
+                    </thead>
+                    <tr v-for="job in jobs.result" :class="{active: job_sel != null && job.id == job_sel.id}">
+                        <td>
+                            <a href="#" @click.prevent="showJob(job)">
+                                <pre>{{job.id}}</pre>
+                            </a>
+                        </td>
+                        <td>
+                            <code v-if="job.info">{{job.info.payload_type}}</code>
+                            <span v-if="job.info == null" class="text-secondary">(deleted)</span>
+                        </td>
+                        <td>
+                            <span class="date" v-if="job.info" :value="job.info.stage.date"></span>
+                        </td>
+                        <td>
+                            <span v-if="job.info">{{job.info.stage.type}}</span>
+                        </td>
+                    </tr>
+                </table>
+                <ul class="pagination" v-if="jobs.paging != null && jobs.paging.total > 0">
+                    <li class="page-item" :disabled="page <= 1" @click.prevent="changePage({index: page - 1})">
+                        <a class="page-link" href="#" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+
+
+                    <li :class="{'page-item': true, active: page.active}" v-for="page in getPages(jobs.paging)">
+                        <a class="page-link" href="#" @click.prevent="changePage(page)">
+                            {{page.index}}
+                        </a>
+                    </li>
+
+                    <li class="page-item" :disabled="page >= jobs.paging.total">
+                        <a class="page-link" href="#" aria-label="Next" @click.prevent="changePage({index: page + 1})">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+
+                </ul>
+            </div>
+        </div>
+
+        <!-- Job details modal -->
+        <div v-if="job_sel" id="jobDetails" class="modal fade" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content" style="width: auto;">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <span v-if="job_parent_id">
+                                <a :href="'#' + job_parent_id" @click.prevent="loadAndShowJob(job_parent_id)">&laquo;</a>
+                            </span>
+                            <code>{{job_sel.id}}</code>
+                        </h5>
+                        <button type="button" class="btn-close" @click="job_sel = null" data-bs-dismiss="modal"
+                            aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <h3>Job Type</h3>
+                        <code>{{job_sel.payload_type}}</code>
+                        <hr/>
+                        <h3>Previous Stages</h3>
+                        <table class="table table-striped">
+                            <tr v-if="job_sel.stage">
+                                <td>{{job_sel.stage.date}}</td>
+                                <td><code>{{job_sel.stage.type}}</code></td>
+                            </tr>
+                            <tr v-for="stage in job_sel.previous_stages.slice().reverse()">
+                                <td>{{stage.date}}</td>
+                                <td>
+                                    <code>{{stage.type}}</code>
+                                    <span v-if="stage.parent_id">
+                                        for <a :href="'#' + stage.parent_id" target="_blank" @click.prevent="loadAndShowJob(stage.parent_id)"><code>{{stage.parent_id}}</code></a>
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"
+            integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF"
+            crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.1/jquery.min.js"
+            integrity="sha512-aVKKRRi/Q/YV+4mjoKBsE4x3H+BkegoM/em46NNlCqNTmUYADjBbeNefNxYV7giUp0VxICtqdrbqU7iVaeZNXA=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vue@2.7.10/dist/vue.min.js"
+            integrity="sha256-rjpmUiJ6gyRPZ2rJkp3soGVAnXC0xotw7s61nf7BqMY=" crossorigin="anonymous"></script>
+        <script>
+            const BASE_APP = "http://localhost:8000/dash";
+
+            let app = new Vue({
+                el: `#app`,
+                data: {
+                    stages: [],
+                    jobs: {
+                        result: [],
+                        paging: null,
+                    },
+                    selection: {
+                        stage: "",
+                        count: 0
+                    },
+                    page: 1,
+                    job_sel: null,
+                    job_parent_id: null
+                },
+                methods: {
+                    loadCounts: async function () {
+                        let resp = await fetch(get_uri({ cmd: "count" }));
+                        let json = await resp.json();
+
+                        this.stages = json.stages;
+
+                        // refresh job list when the total count changed.
+                        var countInCurrentStage = this.stages[this.selection.stage];
+                        if (countInCurrentStage != this.selection.count) {
+                            await this.loadStage(this.selection.stage, countInCurrentStage);
+                        }
+                    },
+                    loadStageReset: async function (stage, count) {
+                        this.page = 1;
+                        await this.loadStage(stage, count);
+                    },
+                    loadStage: async function (stage, count) {
+                        if (this.selection.stage != stage) {
+                            this.jobs = {
+                                result: [],
+                                paging: null
+                            };
+                        }
+
+                        let resp = await fetch(get_uri({ cmd: "jobs_in_stage", stage: stage, page: this.page }));
+                        let json = await resp.json();
+                        this.jobs = json;
+
+                        this.updateTime();
+                        this.selection = {
+                            stage: stage,
+                            count: count
+                        };
+                    },
+                    changePage: async function (page) {
+                        this.page = page.index;
+                        await this.loadStage(this.selection.stage, this.selection.count);
+                    },
+                    updateTime: function () {
+                        setTimeout(update_time, 500);
+                    },
+                    loadAndShowJob: async function (id) {
+                        if (this.job_sel != null) {
+                            this.job_parent_id = this.job_sel.id;
+                        }
+
+                        let resp = await fetch(get_uri({ cmd: "job", id: id }));
+                        let json = await resp.json();
+                        this.showJob(json);
+                    },
+                    showJob: function (job) {
+                        location.hash = job.id;
+                        this.job_sel = job.info;
+                        setTimeout(function () {
+                            $('#jobDetails').modal('show');
+                        }, 50);
+                    }
+                },
+                mounted: function () {
+                    this.loadCounts();
+
+                    if (location.hash.length > 1) {
+                        var id = location.hash.substring(1);
+                        this.loadAndShowJob(id);
+                    }
+
+                    setInterval(this.loadCounts, 2500);
+                    setInterval(this.updateTime, 1000);
+                }
+
+            });
+
+            function get_uri(cmd) {
+                return `${BASE_APP}?query=${JSON.stringify(cmd)}`;
+            }
+
+            function getPages(paging) {
+                var start = Math.max(paging.page - 10, 1);
+                var end = Math.max(Math.min(paging.total, paging.page + 10), Math.min(20, paging.total));
+
+                var result = [];
+                if (paging != null) {
+                    for (var i = start; i <= end; i++) {
+                        result.push({ index: i, active: i == paging.page });
+                    }
+                }
+                return result;
+            }
+
+            function update_time() {
+                var items = document.querySelectorAll(".date");
+                items.forEach(item => {
+                    let input = item.getAttribute("value");
+                    if (input == null) {
+                        input = item.textContent;
+                        item.setAttribute("value", input);
+                        item.setAttribute("title", new Date(input).toString());
+                    }
+
+                    item.textContent = relative_time(new Date(input));
+                });
+            }
+
+            function relative_time(input) {
+                var units = {
+                    year: 24 * 60 * 60 * 1000 * 365,
+                    month: 24 * 60 * 60 * 1000 * 365 / 12,
+                    day: 24 * 60 * 60 * 1000,
+                    hour: 60 * 60 * 1000,
+                    minute: 60 * 1000,
+                    second: 1000
+                }
+
+                var rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+
+                var elapsed = input - new Date();
+
+                // "Math.abs" accounts for both "past" & "future" scenarios
+                for (var u in units)
+                    if (Math.abs(elapsed) > units[u] || u == 'second')
+                        return rtf.format(Math.round(elapsed / units[u]), u)
+            }
+        </script>
+</body>
+
+</html>
