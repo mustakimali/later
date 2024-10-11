@@ -6,7 +6,7 @@ use redis::{aio::Connection, AsyncCommands, Client};
 #[derive(Clone)]
 pub struct Redis {
     _client: Client,
-    connection: Arc<async_mutex::Mutex<Connection>>,
+    connection: Arc<async_lock::Mutex<Connection>>,
 }
 
 impl Redis {
@@ -16,7 +16,7 @@ impl Redis {
 
         Ok(Self {
             _client: client,
-            connection: Arc::new(async_mutex::Mutex::new(conn)),
+            connection: Arc::new(async_lock::Mutex::new(conn)),
         })
     }
 }
