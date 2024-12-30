@@ -45,7 +45,7 @@ opentelemetry = "0.17.0"
 tracing-opentelemetry = "0.17.4"
 
 sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", "uuid", "chrono", "postgres", "offline" ] }
-redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
+redis = { optional = true, version = "0.25", features = ["tokio-comp"] }
 
 [dev-dependencies]
 test-case = "2.2.1"
