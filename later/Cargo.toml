@@ -48,4 +48,4 @@ sqlx = { optional = true, version = "0.6", features = [ "runtime-tokio-rustls", 
 redis = { optional = true, version = "0.21", features = ["tokio-comp"] }
 
 [dev-dependencies]
-test-case = "2.2.1"
+test-case = "3.3.1"
