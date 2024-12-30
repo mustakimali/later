@@ -19,4 +19,4 @@ tracing = "0.1.36"
 tracing-subscriber = { version = "0.3", default-features = false }
 tracing-opentelemetry = "0.17.4"
 opentelemetry = "0.17.0"
-opentelemetry-jaeger = "0.16.0"
+opentelemetry-jaeger = "0.22.0"
