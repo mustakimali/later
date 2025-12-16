@@ -23,7 +23,7 @@ later-derive = { path = "../later-derive", version = "0.0.6"}
 # external
 anyhow = "1.0.60"
 rusty_ulid = "1.0.0"
-lapin = "2.1.1"
+lapin = "2.3.2"
 tokio = { version = "1.38.2", features = ["full"]}
 serde = "1.0"
 serde_derive = "1.0"
